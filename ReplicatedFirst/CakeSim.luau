@@ -130,6 +130,37 @@ local function drive(man: Model, base: BasePart)
 	if not thrust or not align then
 		return
 	end
+
+	-- KNOCKED OUT.
+	--
+	-- The ragdoll is not a system. There is no second rig, no animation, no "enter
+	-- ragdoll state" -- there is only this: STOP HOLDING HIM UP.
+	--
+	-- Two things hold a CakeMan together, and being knocked out takes away both:
+	--   * the `Heading` servo -- the ONE actively-oriented part in the whole character,
+	--     the thing every loose ball socket above it is hanging off. Disable it and
+	--     nothing is keeping him upright any more.
+	--   * the JOINT TONE -- MaxFrictionTorque, which is what makes his sockets doughy
+	--     rather than free. Take it to zero and open the cone limits, and the stack goes
+	--     genuinely limp: the layers slide off each other, the cherry lolls, the arms
+	--     drag. He doesn't fall over so much as give up.
+	--
+	-- Both of those are properties we already had. Being unconscious is just being
+	-- honest about the physics.
+	local downed = base:GetAttribute("Downed") == true
+	for _, d in man:GetDescendants() do
+		if d:IsA("BallSocketConstraint") then
+			local j = d :: BallSocketConstraint
+			j.MaxFrictionTorque = if downed then 0 else (j:GetAttribute("RestFriction") :: number? or 0)
+			j.UpperAngle = if downed then 75 else (j:GetAttribute("RestAngle") :: number? or 6)
+		end
+	end
+	if downed then
+		align.Enabled = false
+		thrust.Force = Vector3.zero
+		return
+	end
+	align.Enabled = true
 	local driving = base:GetAttribute("Driving") == true
 	local moveDir = base:GetAttribute("TargetDir") :: Vector3?
 	local faceDir = (base:GetAttribute("DriveDir") :: Vector3?) or moveDir

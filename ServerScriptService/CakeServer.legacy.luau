@@ -227,6 +227,11 @@ local function socket(
 	j.TwistLowerAngle = -twist
 	j.TwistUpperAngle = twist
 	j.MaxFrictionTorque = friction -- the doughiness. See the constants above.
+	-- Remember what "alive" feels like, so the sim can go limp and come back. Stashing
+	-- the rest values ON the constraint means the sim never has to know the rig's shape
+	-- -- it just reads what this joint's tone was supposed to be.
+	j:SetAttribute("RestAngle", angle)
+	j:SetAttribute("RestFriction", friction)
 	j.Parent = lower
 
 	local nc = Instance.new("NoCollisionConstraint")
@@ -482,6 +487,23 @@ local function spawnCakeManFor(player: Player)
 			CollectionService:AddTag(p, PRESENTED_TAG)
 		end
 	end
+
+	-- A grab needs an attachment to grab BY, and you cannot create one inside the sim.
+	-- So every part a fist could plausibly seize carries one from birth. (Pre-wire what
+	-- the sim will need; the sim only ever sets targets.)
+	for _, p in man:GetDescendants() do
+		if p:IsA("BasePart") and p.Name ~= "Head" then
+			local att = Instance.new("Attachment")
+			att.Name = "GrabAtt"
+			att.Parent = p
+		end
+	end
+
+	-- Health lives on the root as attributes, because that's where the sim can see it.
+	local root = man.PrimaryPart :: BasePart
+	root:SetAttribute("Health", 100)
+	root:SetAttribute("Downed", false)
+	root:SetAttribute("DownedFor", 0) -- counts DOWN by dt. Never a timestamp.
 
 	man.Parent = menFolder
 	-- THE line everyone forgets. With no Humanoid character, prediction has no
