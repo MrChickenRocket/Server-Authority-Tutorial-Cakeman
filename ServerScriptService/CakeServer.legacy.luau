@@ -15,11 +15,15 @@ Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
 -- Every limb here is the SAME construction: a chain of parts, ball socket between
 -- each, a gap so they don't grind, and a spring pulling each back toward its rest
 -- pose. Learn it once, and arms, head and body are all the same three lines.
--- The body layers are built from a cake MESH (workspace.Cake -- meshId
--- rbxassetid://97264442734279). We lift it out of the world at boot and keep it as a
--- template. If it isn't there, the code below falls back to plain boxes and everything
--- still works: the mesh is a costume, not a mechanism, and no physics depends on it.
-local CAKE_MESH_NAME = "Cake"
+-- The body layers are built from a cake MESH, created straight from its asset id --
+-- no template lying around in Workspace, nothing to lose, nothing for a reader to have
+-- to insert by hand. `AssetService:CreateMeshPartAsync` is the supported way to do this
+-- at runtime, and it takes the one property a Script is otherwise forbidden to write:
+-- CollisionFidelity. (Assigning `meshPart.CollisionFidelity` from a Script throws
+-- "lacking capability Plugin"; passing it in here is allowed.)
+--
+-- It yields, so it happens once at boot -- never inside the sim.
+local CAKE_MESH_ID = "rbxassetid://97264442734279"
 
 local LAYERS = 4
 -- Slab thickness and joint gap are ONE budget, not two. The layer pitch (thickness +
@@ -107,18 +111,26 @@ local function makePart(name: string, size: Vector3, color: Color3, density: num
 	return p
 end
 
--- Take the cake mesh out of the world once, at boot, and hold it as a template.
--- (Left in Workspace it's just a prop lying on the floor, and it would be replicated
--- to every client as scenery.)
+-- Build the cake mesh once, at boot, and keep it as the template every layer clones.
+-- BOX collision, deliberately: the mesh is a costume, and the thing the physics engine
+-- actually wrestles with should stay a cheap, well-behaved box -- especially the bottom
+-- layer, which is sliding across the floor all game. Detailed collision geometry on a
+-- part that slides is how you get it snagging on nothing.
 local cakeTemplate: MeshPart? = nil
 do
-	local found = workspace:FindFirstChild(CAKE_MESH_NAME)
-	if found and found:IsA("MeshPart") then
-		found.Parent = nil
-		cakeTemplate = found
-		print("[CakeServer] using cake mesh", found.MeshId)
+	local ok, result = pcall(function()
+		return game:GetService("AssetService"):CreateMeshPartAsync(
+			CAKE_MESH_ID,
+			{ CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Precise }
+		)
+	end)
+	if ok and result then
+		cakeTemplate = result
+		print("[CakeServer] built cake mesh from", CAKE_MESH_ID)
 	else
-		warn("[CakeServer] no workspace." .. CAKE_MESH_NAME .. " MeshPart -- falling back to boxes")
+		-- Falls back to plain boxes, and everything still works: the mesh is a costume,
+		-- not a mechanism, and no physics depends on it.
+		warn("[CakeServer] couldn't build the cake mesh -- falling back to boxes:", result)
 	end
 end
 
@@ -131,14 +143,8 @@ local function makeLayer(name: string, size: Vector3, color: Color3, density: nu
 	layer.Size = size -- MeshParts scale to whatever Size you give them
 	layer.Color = color
 	layer.Material = Enum.Material.SmoothPlastic
-	-- NOTE: CollisionFidelity is deliberately NOT set here -- a Script isn't allowed to
-	-- write it (it needs Plugin capability, and you'll get "cannot write
-	-- 'CollisionFidelity' (lacking capability Plugin)" at runtime). Clones inherit it
-	-- from the template, so set it ON THE MESH in Studio instead. Set it to **Box**:
-	-- the mesh is a costume, and the thing the physics engine actually wrestles with
-	-- should stay a cheap, well-behaved box -- especially the bottom layer, which is
-	-- sliding across the floor all game. Detailed collision on a sliding part is how
-	-- you get it snagging on nothing.
+	-- (CollisionFidelity came from CreateMeshPartAsync above -- clones inherit it, and a
+	-- Script can't assign it directly anyway.)
 	layer.CustomPhysicalProperties = PhysicalProperties.new(density, 0.3, 0.1, 1, 1)
 	return layer
 end
