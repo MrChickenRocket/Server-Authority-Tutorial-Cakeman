@@ -64,19 +64,29 @@ local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if h
 -- fist strains at full extension, permanently short of where you told it to go, and
 -- every grab misses by exactly the amount you overreached. I did this twice before I
 -- worked out the arm simply wasn't long enough. THE VERTICAL DROP EATS THE REACH.
-local STANCE_DIST = 3.6 -- how far in front the hands are held
+-- The stance is held in the SHOULDER LAYER'S OWN FRAME, not the world's and not the
+-- base's. The arms hang off the top cake, and that layer is on a loose socket -- it
+-- leans, it lags, it wobbles a beat behind the body. Put the hands out along a world
+-- direction and the shoulders end up skewed to them: one arm reaching across his chest,
+-- the other flung wide, the guard visibly crooked. Compute the pose relative to the part
+-- the arms actually hang from and the shoulders are square by construction, with both
+-- arms going straight out in front, whatever the rest of him is doing.
+--
+-- (Note the offsets are LOCAL: forward, sideways and up as the shoulder layer sees them.)
+local STANCE_DIST = 3.6 -- how far in front of the shoulders the hands are held
 local STANCE_WIDTH = 2.1 -- and how far apart. A grappler's guard, not a lunge.
-local STANCE_HEIGHT = 3.4 -- high enough that the arm isn't spending its whole length
--- just getting down to the floor, low enough to still take a box off the deck
-local STANCE_REACHED = 1.6 -- how close a fist must get to its stance point before it's
--- considered UP and ARMED. Loose, because the fist is on the end of five ball sockets
--- and will never sit perfectly still -- demand precision from a noodle and it is never
--- ready at all.
-local STANCE_TIMEOUT = 1.0 -- ...and arm anyway after this long, reached or not. A noodle
--- arm can get snagged on a box, tangled in the other arm, or pinned against a wall, and
--- without this you'd be standing there holding the button with your hands up and NOTHING
--- HAPPENING, for reasons invisible to you. Never let a physical precondition be the only
--- way out of a player's input: give it a clock as well.
+local STANCE_RISE = -1.1 -- relative to the shoulder layer: hands a little below the
+-- shoulders, so the arm isn't spending its whole length getting down to the floor
+
+-- THE COMMITMENT. Putting your hands up does NOT grab. For a full second you are just a
+-- cake standing there with its guard up, and only then do the hands become live.
+--
+-- That second is the entire mechanic. It's what makes grabbing a decision rather than a
+-- reflex: you must commit before you know whether it'll land, and everyone watching gets
+-- a second of warning painted on your body. Take the delay away and grab becomes a
+-- twitch-button that always wins; leave it in and it becomes something you can bait, dodge,
+-- or punish.
+local ARM_DELAY = 1.0
 
 local UP = Vector3.new(0, 1, 0)
 
@@ -162,6 +172,17 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 	local speed = (v - UP * v.Y).Magnitude
 	local hop = (base:GetAttribute("HopPhase") :: number?) or 0
 	base:SetAttribute("HopPhase", (hop + speed * dt / HOP_STRIDE) % 1)
+
+	-- WITH YOUR GUARD UP, YOU FACE WHERE YOU'RE LOOKING. Otherwise he holds his stance out
+	-- in whatever direction he last happened to be walking, and you can't aim a grab at
+	-- all -- you'd have to jog in a little circle to point yourself at your opponent,
+	-- which is exactly as stupid as it sounds. Squaring up to a man is half of grappling.
+	if readBool(player, "Grab") and not driving then
+		local flat = camF - UP * camF.Y
+		if flat.Magnitude > 1e-3 then
+			base:SetAttribute("TargetDir", flat.Unit)
+		end
+	end
 
 	-- The FACING chases the movement at TURN_RATE. Movement itself never waits.
 	local tdir = base:GetAttribute("TargetDir") :: Vector3?
@@ -272,14 +293,9 @@ local function drive(man: Model, base: BasePart, dt: number)
 	held = if reaching then held + dt else 0
 	base:SetAttribute("GuardTime", held)
 
-	-- Aim the stance where the player is LOOKING, not where his feet are pointing.
-	-- (The fallback is +LookVector: his facing IS his LookVector, because that's what the
-	-- Heading servo aligns it to. I had this negated once, and he put his guard up
-	-- behind himself, very confidently.)
-	local aimSrc = (base:GetAttribute("LookDir") :: Vector3?) or faceDir or base.CFrame.LookVector
-	local flat = aimSrc - UP * aimSrc.Y
-	local out = if flat.Magnitude > 1e-3 then flat.Unit else base.CFrame.LookVector
-	local right = out:Cross(UP)
+	-- The hands hang off the TOP layer, so the guard is posed in ITS frame -- see the note
+	-- on STANCE_DIST. If it's somehow missing, fall back to the base rather than throwing.
+	local shoulders = (man:FindFirstChild("Layer4") :: BasePart?) or base
 
 	for _, side in { "L", "R" } do
 		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
@@ -294,17 +310,21 @@ local function drive(man: Model, base: BasePart, dt: number)
 		local guarding = reaching and not holding
 		;(reach :: AlignPosition).Enabled = guarding
 
-		local armed = false
 		if guarding then
-			local stance = base.Position
-				+ out * STANCE_DIST
-				+ right * (if side == "L" then -STANCE_WIDTH else STANCE_WIDTH)
-				+ UP * STANCE_HEIGHT
-			;(reach :: AlignPosition).Position = stance
-			armed = (fist.Position - stance).Magnitude < STANCE_REACHED or held >= STANCE_TIMEOUT
+			-- Straight out in front of the shoulders he actually has, not the ones the
+			-- world thinks he has. Forward is -Z, same as everything else in this rig.
+			local lateral = if side == "L" then -STANCE_WIDTH else STANCE_WIDTH
+			local stance = shoulders.CFrame * CFrame.new(lateral, STANCE_RISE, -STANCE_DIST)
+			local reachAlign = reach :: AlignPosition
+			reachAlign.Position = stance.Position
 		end
-		-- The server reads this to decide whether this hand is allowed to close.
-		base:SetAttribute("Armed" .. side, armed)
+
+		-- ARMED IS PURELY THE CLOCK. Not "has the fist arrived" -- a noodle arm on five
+		-- ball sockets arrives when it feels like it, and gating a player's input on that
+		-- means the grab fires at a different moment every time, for reasons invisible to
+		-- them. One second, every time, whatever the arms are doing. Predictable beats
+		-- physical.
+		base:SetAttribute("Armed" .. side, guarding and held >= ARM_DELAY)
 	end
 
 	-- ...and that's the entire character. Layers, head and arms are never touched by
