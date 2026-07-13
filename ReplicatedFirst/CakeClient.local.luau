@@ -36,6 +36,13 @@ require(ReplicatedFirst:WaitForChild("CakeSim")).Initialize()
 -- ---------------------------------------------------------------------------
 local CollectionService = game:GetService("CollectionService")
 
+-- Verify with RunService:GetPredictionStatus(instance), which reports what the engine
+-- is ACTUALLY doing rather than what you asked for:
+--   Predicted     -- the client simulates it and rolls it back (what we want)
+--   Authoritative -- this client is the authority for it
+--   None          -- not predicted here; you're watching replicated results
+-- A box 78 studs away reads `None` on Automatic and `Predicted` once forced On. Don't
+-- trust that a prediction knob worked -- read it back.
 local function predictAlways(inst: Instance)
 	if inst:IsA("BasePart") then
 		RunService:SetPredictionMode(inst, Enum.PredictionMode.On)
