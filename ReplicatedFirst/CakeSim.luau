@@ -148,15 +148,6 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 	-- rolled back with resimulation, read by every peer.
 	base:SetAttribute("Reaching", readBool(player, "Grab"))
 
-	-- You AIM A GRAB WITH THE CAMERA, not with your feet. The first version threw the
-	-- fists along his drive direction, which is fine while you're running at something
-	-- and completely useless when you're standing still next to it -- he'd lunge
-	-- confidently at wherever he last happened to be walking. Store where you're LOOKING.
-	local camF = readCameraDir(player)
-	if camF.Magnitude > 1e-3 then
-		base:SetAttribute("LookDir", camF)
-	end
-
 	-- Advance the hop clock by distance travelled. Stand still and it stops -- the clock
 	-- IS the speedometer, so he can't hop on the spot without meaning to.
 	local v = base.AssemblyLinearVelocity
@@ -164,16 +155,19 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 	local hop = (base:GetAttribute("HopPhase") :: number?) or 0
 	base:SetAttribute("HopPhase", (hop + speed * dt / HOP_STRIDE) % 1)
 
-	-- WITH YOUR GUARD UP, YOU FACE WHERE YOU'RE LOOKING. Otherwise he holds his stance out
-	-- in whatever direction he last happened to be walking, and you can't aim a grab at
-	-- all -- you'd have to jog in a little circle to point yourself at your opponent,
-	-- which is exactly as stupid as it sounds. Squaring up to a man is half of grappling.
-	if readBool(player, "Grab") and not driving then
-		local flat = camF - UP * camF.Y
-		if flat.Magnitude > 1e-3 then
-			base:SetAttribute("TargetDir", flat.Unit)
-		end
-	end
+	-- THE GUARD DOES NOT FOLLOW THE CAMERA. It follows HIM.
+	--
+	-- There was a block here that re-aimed his facing at the flattened camera direction
+	-- while the guard was up, so he'd square up to whatever you were looking at. It felt
+	-- clever and it was wrong: it meant your hands slid around your body every time you
+	-- moved the mouse, and the camera -- which is a way of LOOKING at the world -- had
+	-- become a way of acting on it. Turning your head is not turning your shoulders.
+	--
+	-- The camera still steers, because W is camera-relative and that's what everyone
+	-- expects. But once the intent is a direction in the world, the camera's job is done.
+	-- The hands hang off the StanceL/StanceR attachments on his top cake, so they point
+	-- wherever HE points, and to aim a grab you turn the man. That's the whole game: you
+	-- have to line your body up with your opponent, and everyone can see you doing it.
 
 	-- The FACING chases the movement at TURN_RATE. Movement itself never waits.
 	local tdir = base:GetAttribute("TargetDir") :: Vector3?
