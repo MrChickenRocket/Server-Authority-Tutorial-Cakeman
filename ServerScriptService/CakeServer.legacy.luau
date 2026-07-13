@@ -414,7 +414,11 @@ local function spawnCakeManFor(player: Player)
 	local man = buildCakeMan()
 	man.Name = name
 	man:PivotTo(CFrame.new(spawnIndex * 8, 3, 0))
-	man.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- never stream half a character
+	-- Persistent, not merely Atomic. Atomic promises you'll never be sent HALF a
+	-- character; Persistent promises you'll always be sent the character AT ALL. In a
+	-- game about hitting each other, an opponent who streams out at range -- and so
+	-- can't be predicted when he comes back -- is not a character, he's a rumour.
+	man.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	addActuators(man)
 	man.Parent = menFolder
 	-- THE line everyone forgets. With no Humanoid character, prediction has no
