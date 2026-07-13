@@ -15,57 +15,104 @@ local smoothDamp = require(ReplicatedFirst:WaitForChild("Smoothing")).damp
 require(ReplicatedFirst:WaitForChild("CakeSim")).Initialize()
 
 -- ---------------------------------------------------------------------------
--- PREDICT THE PROPS, EXPLICITLY.
+-- THE PREDICTION BUBBLE.
 --
 -- By default the engine predicts instances with simulation access NEAR THE LOCAL
--- CHARACTER, and decides for itself what "near" means (there's an engine-managed
--- simulation radius you don't get to set -- push Player.SimulationRadius and it just
--- drifts back). Which means a box you're about to hit may only have joined your
--- predicted world moments ago: you punch it, and the punch goes to the server and back
--- before it moves. That's the lag you feel on props, and no amount of network
--- ownership fiddling fixes it -- SetNetworkOwner is meaningless under Server Authority,
--- the server owns everything by definition.
+-- CHARACTER, and decides for itself what "near" means -- there's an engine-managed
+-- simulation radius you don't get to set (push Player.SimulationRadius and it drifts
+-- straight back). So a box you're about to hit may have joined your predicted world
+-- only moments ago: you punch it, the punch round-trips to the server, and THEN it
+-- moves. That's the lag you feel on props. No amount of network-ownership fiddling
+-- helps -- SetNetworkOwner is meaningless under Server Authority, the server owns
+-- everything by definition.
 --
--- RunService:SetPredictionMode(instance, PredictionMode.On) forces an instance to ALWAYS
--- be predicted and rolled back, near or far. It's client-only, and it's the knob for
--- exactly this: "for Instances critical to your experience, use this setting."
+-- The real knob is RunService:SetPredictionMode(instance, mode) -- client-only:
+--   On        -- always predicted and rolled back, near or far
+--   Off       -- never; you just watch replicated results
+--   Automatic -- the engine's radius decides (the default)
 --
--- The cost is real -- every forced instance participates in every rollback -- so this
--- is a decision about which objects the game is ABOUT. Here that's the boxes: hitting
--- them is the whole verb.
+-- But `On` is not free: every forced instance joins the resimulation set, and the sim
+-- re-runs several times per frame. Force all 122 boxes on and you're re-simulating a
+-- warehouse to punch one box.
+--
+-- So we do it AD-HOC: keep a bubble around the player, wider than the engine's own
+-- radius, and force prediction On for what's inside it and back to Automatic for what
+-- leaves. You pay only for the props you could plausibly touch in the next second or
+-- two, and anything you can reach is already predicted by the time you reach it.
+--
+-- Two details that matter:
+--   * HYSTERESIS. Enter the bubble at one radius, leave at a larger one, or props
+--     sitting exactly on the boundary flip mode every frame.
+--   * LEAD TIME. The bubble is much bigger than arm's reach on purpose: a prop needs to
+--     be predicted BEFORE you arrive, not as you hit it. At ~12 studs/s, a 55-stud
+--     bubble is about four seconds of warning.
 -- ---------------------------------------------------------------------------
 local CollectionService = game:GetService("CollectionService")
+
+local BUBBLE_IN = 55 -- start predicting a prop once it's this close...
+local BUBBLE_OUT = 70 -- ...and stop only once it's this far. The gap is the hysteresis.
+local BUBBLE_HZ = 5 -- how often we re-evaluate. Props don't teleport; 5Hz is plenty.
 
 -- Verify with RunService:GetPredictionStatus(instance), which reports what the engine
 -- is ACTUALLY doing rather than what you asked for:
 --   Predicted     -- the client simulates it and rolls it back (what we want)
 --   Authoritative -- this client is the authority for it
 --   None          -- not predicted here; you're watching replicated results
--- A box 78 studs away reads `None` on Automatic and `Predicted` once forced On. Don't
--- trust that a prediction knob worked -- read it back.
-local function predictAlways(inst: Instance)
-	if inst:IsA("BasePart") then
-		RunService:SetPredictionMode(inst, Enum.PredictionMode.On)
+-- Don't trust that a prediction knob worked. Read it back.
+local predicted: { [BasePart]: boolean } = {}
+
+local function setPredicted(part: BasePart, on: boolean)
+	if predicted[part] == on then
+		return -- don't re-issue the same mode every tick
 	end
+	predicted[part] = on
+	RunService:SetPredictionMode(part, if on then Enum.PredictionMode.On else Enum.PredictionMode.Automatic)
 end
 
-for _, prop in CollectionService:GetTagged("Prop") do
-	predictAlways(prop)
+local function localRoot(): BasePart?
+	local men = workspace:FindFirstChild("CakeMen")
+	local man = men and men:FindFirstChild("CakeMan_" .. localPlayer.UserId)
+	return man and man:FindFirstChild("Layer1") :: BasePart?
 end
-CollectionService:GetInstanceAddedSignal("Prop"):Connect(predictAlways)
 
--- And every CakeMan -- yours and everyone else's. Yours is the most critical instance
--- in the game and the engine would predict it anyway (it's your Character, it's right
--- here); saying so explicitly costs nothing and documents the intent. THEIRS is the
--- interesting one: a remote player's cake is a heavy object you can run into, and if
--- it isn't predicted locally, every collision with another player waits on the server.
+task.spawn(function()
+	while true do
+		task.wait(1 / BUBBLE_HZ)
+		local root = localRoot()
+		if root then
+			local here = root.Position
+			for _, prop in CollectionService:GetTagged("Prop") do
+				if prop:IsA("BasePart") then
+					local d = (prop.Position - here).Magnitude
+					if d < BUBBLE_IN then
+						setPredicted(prop, true)
+					elseif d > BUBBLE_OUT then
+						setPredicted(prop, false)
+					end
+					-- between IN and OUT: leave it however it already is. That's the hysteresis.
+				end
+			end
+		end
+	end
+end)
+
+-- CHARACTERS ARE ALWAYS ON, bubble or no bubble. Yours is the most critical instance in
+-- the game. Everyone else's is a heavy object you can run into -- and an opponent who
+-- isn't predicted locally means every player-vs-player collision waits on the server,
+-- which in a game about hitting each other is the worst possible thing to make people
+-- wait for. There are only ever a handful of them, so they're cheap to keep on.
 task.spawn(function()
 	local men = workspace:WaitForChild("CakeMen")
 	local function predictCharacter(man: Instance)
-		for _, p in man:GetDescendants() do
-			predictAlways(p)
+		local function force(p: Instance)
+			if p:IsA("BasePart") then
+				RunService:SetPredictionMode(p, Enum.PredictionMode.On)
+			end
 		end
-		man.DescendantAdded:Connect(predictAlways)
+		for _, p in man:GetDescendants() do
+			force(p)
+		end
+		man.DescendantAdded:Connect(force)
 	end
 	for _, man in men:GetChildren() do
 		predictCharacter(man)
