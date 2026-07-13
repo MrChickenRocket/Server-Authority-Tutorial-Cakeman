@@ -15,93 +15,36 @@ local smoothDamp = require(ReplicatedFirst:WaitForChild("Smoothing")).damp
 require(ReplicatedFirst:WaitForChild("CakeSim")).Initialize()
 
 -- ---------------------------------------------------------------------------
--- THE PREDICTION BUBBLE.
+-- PREDICTION: WE DON'T MANAGE IT. THE ENGINE DOES.
 --
--- By default the engine predicts instances with simulation access NEAR THE LOCAL
--- CHARACTER, and decides for itself what "near" means -- there's an engine-managed
--- simulation radius you don't get to set (push Player.SimulationRadius and it drifts
--- straight back). So a box you're about to hit may have joined your predicted world
--- only moments ago: you punch it, the punch round-trips to the server, and THEN it
--- moves. That's the lag you feel on props. No amount of network-ownership fiddling
--- helps -- SetNetworkOwner is meaningless under Server Authority, the server owns
--- everything by definition.
+-- The engine predicts instances with simulation access NEAR THE LOCAL CHARACTER, and
+-- it maintains that bubble itself -- measured here at roughly 10-20 studs, adaptive.
+-- Which is exactly the bubble you'd have written, for free, and it's already correct:
+-- the box CakeMan runs into reads `Predicted` at the moment he hits it.
 --
--- The real knob is RunService:SetPredictionMode(instance, mode) -- client-only:
---   On        -- always predicted and rolled back, near or far
---   Off       -- never; you just watch replicated results
---   Automatic -- the engine's radius decides (the default)
+-- IT ONLY WORKS IF THE ENGINE KNOWS WHERE YOU ARE. Two things must be set, and both
+-- are done server-side in CakeServer at spawn:
 --
--- But `On` is not free: every forced instance joins the resimulation set, and the sim
--- re-runs several times per frame. Force all 122 boxes on and you're re-simulating a
--- warehouse to punch one box.
+--   player.ReplicationFocus = <root part>   -- what to replicate around
+--   player.Character        = <the model>   -- what to PREDICT around
 --
--- So we do it AD-HOC: keep a bubble around the player, wider than the engine's own
--- radius, and force prediction On for what's inside it and back to Automatic for what
--- leaves. You pay only for the props you could plausibly touch in the next second or
--- two, and anything you can reach is already predicted by the time you reach it.
+-- Miss those and the engine has no centre to work from: nothing gets predicted, your
+-- own input feels like full round-trip latency, and props seem to join the world late.
+-- That is the actual fix, and it's two lines.
 --
--- Two details that matter:
---   * HYSTERESIS. Enter the bubble at one radius, leave at a larger one, or props
---     sitting exactly on the boundary flip mode every frame.
---   * LEAD TIME. The bubble is much bigger than arm's reach on purpose: a prop needs to
---     be predicted BEFORE you arrive, not as you hit it. At ~12 studs/s, a 55-stud
---     bubble is about four seconds of warning.
+-- We DID build a hand-rolled bubble here (SetPredictionMode On/Off by distance, with
+-- hysteresis) and it was a mistake worth recording: it fought the engine's own bubble,
+-- flipping modes underneath it, and props visibly danced between predicted and not. If
+-- you find yourself micromanaging prediction, check ReplicationFocus and Character
+-- first -- you are probably solving a problem you created by not setting them.
+--
+-- (RunService:SetPredictionMode(instance, On/Off/Automatic) is still the right tool for
+-- the exceptional case: an instance the game is ABOUT that lives outside the bubble --
+-- a boss across the arena, a ball everyone is chasing. `On` is not free, though: every
+-- forced instance joins the resimulation set, and the sim re-runs several times per
+-- frame. Reach for it deliberately, not as a policy.)
 -- ---------------------------------------------------------------------------
 local CollectionService = game:GetService("CollectionService")
-
--- The bubble is SMALL, and it can afford to be: prediction switches on the same frame
--- you ask for it (measured -- SetPredictionMode(On) -> GetPredictionStatus == Predicted
--- in 0 ms, no warm-up), so a prop doesn't need a long run-up to be ready. It only needs
--- to be predicted before you TOUCH it, and 8 studs is already arm's reach for a cake.
--- Keep it tight: everything inside this bubble is paying for itself on every rollback.
-local BUBBLE_IN = 10 -- start predicting a prop once it's this close...
-local BUBBLE_OUT = 15 -- ...and stop only once it's this far. The gap is the hysteresis.
-local BUBBLE_HZ = 15 -- how often we re-evaluate. A tight bubble MUST be checked often:
--- at 12 studs/s he covers 8 studs in under a second, and a lazy tick would have him
--- arriving at a box the bubble hasn't noticed yet. Small radius, fast tick.
-
--- Verify with RunService:GetPredictionStatus(instance), which reports what the engine
--- is ACTUALLY doing rather than what you asked for:
---   Predicted     -- the client simulates it and rolls it back (what we want)
---   Authoritative -- this client is the authority for it
---   None          -- not predicted here; you're watching replicated results
--- Don't trust that a prediction knob worked. Read it back.
-local predicted: { [BasePart]: boolean } = {}
-
-local function setPredicted(part: BasePart, on: boolean)
-	if predicted[part] == on then
-		return -- don't re-issue the same mode every tick
-	end
-	predicted[part] = on
-	RunService:SetPredictionMode(part, if on then Enum.PredictionMode.On else Enum.PredictionMode.Automatic)
-end
-
-local function localRoot(): BasePart?
-	local men = workspace:FindFirstChild("CakeMen")
-	local man = men and men:FindFirstChild("CakeMan_" .. localPlayer.UserId)
-	return man and man:FindFirstChild("Layer1") :: BasePart?
-end
-
-task.spawn(function()
-	while true do
-		task.wait(1 / BUBBLE_HZ)
-		local root = localRoot()
-		if root then
-			local here = root.Position
-			for _, prop in CollectionService:GetTagged("Prop") do
-				if prop:IsA("BasePart") then
-					local d = (prop.Position - here).Magnitude
-					if d < BUBBLE_IN then
-						setPredicted(prop, true)
-					elseif d > BUBBLE_OUT then
-						setPredicted(prop, false)
-					end
-					-- between IN and OUT: leave it however it already is. That's the hysteresis.
-				end
-			end
-		end
-	end
-end)
 
 -- ---------------------------------------------------------------------------
 -- F6: PAINT THE PREDICTION BUBBLE.
@@ -161,29 +104,12 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- CHARACTERS ARE ALWAYS ON, bubble or no bubble. Yours is the most critical instance in
--- the game. Everyone else's is a heavy object you can run into -- and an opponent who
--- isn't predicted locally means every player-vs-player collision waits on the server,
--- which in a game about hitting each other is the worst possible thing to make people
--- wait for. There are only ever a handful of them, so they're cheap to keep on.
-task.spawn(function()
-	local men = workspace:WaitForChild("CakeMen")
-	local function predictCharacter(man: Instance)
-		local function force(p: Instance)
-			if p:IsA("BasePart") then
-				RunService:SetPredictionMode(p, Enum.PredictionMode.On)
-			end
-		end
-		for _, p in man:GetDescendants() do
-			force(p)
-		end
-		man.DescendantAdded:Connect(force)
-	end
-	for _, man in men:GetChildren() do
-		predictCharacter(man)
-	end
-	men.ChildAdded:Connect(predictCharacter)
-end)
+-- Characters aren't forced either. Yours is the Character the engine predicts AROUND,
+-- and a rival close enough to hit is inside that same bubble by definition. Forcing
+-- them On would be more of the same micromanagement -- and it's worth knowing that
+-- re-issuing a prediction mode repeatedly is actively harmful: it churns the engine's
+-- state and can leave a part LESS predicted than if you had simply left it alone.
+-- Set it once, or don't set it at all.
 
 -- ---------------------------------------------------------------------------
 -- THE CAMERA IS YOURS NOW.
