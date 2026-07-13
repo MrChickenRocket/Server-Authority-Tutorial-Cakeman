@@ -318,6 +318,29 @@ local function buildCakeMan(): Model
 	-- sideways -- a chain of segments, each socketed to the last, each sprung back
 	-- toward rest. They are pure passive theatre: nothing drives them, they just get
 	-- dragged around by the body and flail, which is exactly what we want.
+	-- A grab needs an attachment to grab BY, and you cannot create one inside the sim --
+	-- so every part a fist could plausibly seize carries one from birth.
+	--
+	-- THE ORDER MATTERS, and it cost me an hour. These have to exist BEFORE the actuators
+	-- are wired, because the fists' Grip and Reach constraints point AT them. I created
+	-- them afterwards, so both constraints came up with a nil Attachment -- and an
+	-- AlignPosition with a nil attachment doesn't error, doesn't warn, and doesn't do
+	-- anything. The fists still swung (that's just the arms having momentum), so it
+	-- LOOKED like reaching worked; it just never grabbed. I went hunting for a bug in the
+	-- grip force, in the mass, in the break threshold, in the target search -- and the
+	-- constraint had simply never been plugged in.
+	--
+	-- Build the sockets before you wire the plugs.
+	local function addGrabAttachments(m: Model)
+		for _, p in m:GetDescendants() do
+			if p:IsA("BasePart") and p.Name ~= "Head" and not p:FindFirstChild("GrabAtt") then
+				local att = Instance.new("Attachment")
+				att.Name = "GrabAtt"
+				att.Parent = p
+			end
+		end
+	end
+
 	local fistSize = ARM_SIZE * FIST_SCALE
 	for _, side in { { suffix = "L", x = -1 }, { suffix = "R", x = 1 } } do
 		-- Shoulders on the TOP layer, so the noodles dangle clear of the floor.
@@ -372,6 +395,7 @@ local function buildCakeMan(): Model
 		end
 	end
 
+	addGrabAttachments(man) -- BEFORE the actuators are wired. See the note above.
 	return man
 end
 
@@ -392,6 +416,52 @@ local function addActuators(man: Model)
 	thrust.ApplyAtCenterOfMass = true
 	thrust.Force = Vector3.zero
 	thrust.Parent = base
+
+	-- THE FISTS. Two actuators per fist, both pre-created and both disabled, because you
+	-- cannot create an instance inside the simulation -- it would be created again on
+	-- every resimulated frame. Pre-wire everything the sim could ever need; the sim only
+	-- ever sets targets and flips Enabled.
+	for _, side in { "L", "R" } do
+		local fist = man:FindFirstChild("Arm" .. side .. ARM_SEGMENTS) :: BasePart
+		local grabAtt = fist:FindFirstChild("GrabAtt") :: Attachment
+
+		-- REACH: shoots the fist out toward where you're aiming. A position servo on the
+		-- fist itself -- the arm is a noodle, so pulling the fist somewhere drags the
+		-- whole arm after it.
+		local reach = Instance.new("AlignPosition")
+		reach.Name = "Reach"
+		reach.Mode = Enum.PositionAlignmentMode.OneAttachment
+		reach.Attachment0 = grabAtt
+		reach.RigidityEnabled = false
+		reach.MaxForce = 26000
+		reach.Responsiveness = 22
+		reach.Enabled = false
+		reach.Parent = fist
+
+		-- GRIP: what actually holds the thing you caught.
+		--
+		-- Attachment0 is the TARGET (set when you grab something) and Attachment1 is the
+		-- fist -- that order matters, because AlignPosition drags Attachment0 toward
+		-- Attachment1. We want the box to come to the hand, not the hand to the box.
+		--
+		-- And MaxForce is the whole grip mechanic. Roblox won't tell you the reaction
+		-- force in a constraint, so you can't *read* tension -- but you don't need to.
+		-- Give the grip a finite strength and it simply FAILS to hold anything too heavy
+		-- or too determined: the gap between fist and target opens up, and that gap IS
+		-- the tension. Watch the gap, break the grip when it gets too wide, and a
+		-- struggling opponent tears himself out of your hand for free.
+		local grip = Instance.new("AlignPosition")
+		grip.Name = "Grip"
+		grip.Mode = Enum.PositionAlignmentMode.TwoAttachment
+		grip.Attachment1 = grabAtt
+		grip.RigidityEnabled = false
+		grip.MaxForce = 55000 -- enough to hoist a limp cake. Not enough to hold a
+		-- fighting one, which is exactly the point.
+		grip.Responsiveness = 25
+		grip.ReactionForceEnabled = true -- what you're carrying weighs on YOU, too
+		grip.Enabled = false
+		grip.Parent = fist
+	end
 
 	-- The base is the ONE part that's actively held upright and pointed where you're
 	-- going. Everything above it is springs and sockets.
@@ -441,6 +511,23 @@ local function buildInputContext(player: Player)
 	cameraDir.Type = Enum.InputActionType.Direction3D
 	cameraDir.Parent = ctx
 
+	-- Hold left mouse to throw your fists out. Same path as everything else -- an
+	-- InputAction, so it replicates AND rolls back. (A RemoteEvent here would mean the
+	-- server and your rollback disagreed about exactly when you punched, which for a
+	-- game whose whole verb is punching is not a small problem.)
+	local grab = Instance.new("InputAction")
+	grab.Name = "Grab"
+	grab.Type = Enum.InputActionType.Bool
+	grab.Parent = ctx
+	local mouse = Instance.new("InputBinding")
+	mouse.Name = "Mouse"
+	mouse.KeyCode = Enum.KeyCode.MouseLeftButton
+	mouse.Parent = grab
+	local pad2 = Instance.new("InputBinding")
+	pad2.Name = "Gamepad"
+	pad2.KeyCode = Enum.KeyCode.ButtonR2
+	pad2.Parent = grab
+
 	ctx.Parent = player
 end
 
@@ -485,17 +572,6 @@ local function spawnCakeManFor(player: Player)
 	for _, p in man:GetDescendants() do
 		if p:IsA("BasePart") then
 			CollectionService:AddTag(p, PRESENTED_TAG)
-		end
-	end
-
-	-- A grab needs an attachment to grab BY, and you cannot create one inside the sim.
-	-- So every part a fist could plausibly seize carries one from birth. (Pre-wire what
-	-- the sim will need; the sim only ever sets targets.)
-	for _, p in man:GetDescendants() do
-		if p:IsA("BasePart") and p.Name ~= "Head" then
-			local att = Instance.new("Attachment")
-			att.Name = "GrabAtt"
-			att.Parent = p
 		end
 	end
 

@@ -45,6 +45,24 @@ local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if h
 -- already rising or falling faster than this, the hop is spent. Without this check he
 -- boosts himself in mid-air on every cycle and floats away like a balloon.
 
+-- HOW FAR THE FISTS ARE THROWN. This is not a taste decision, it's ARM LENGTH, and the
+-- geometry is brutal:
+--
+--   His shoulder sits ~6.4 studs up. His arm is 5 segments of ~1.1 studs = ~5.6 long.
+--   So reaching a point 6 studs FORWARD and 5 studs DOWN needs sqrt(6^2 + 5.2^2) = 7.9
+--   studs of arm, and he has 5.6. The fist strains at full extension, permanently short,
+--   and every grab misses by exactly the amount you overreached.
+--
+--   I did this twice: asked for 9 (fist ended 8.6 studs from the box), then asked for 6
+--   at floor height (fist ended 6.7 studs from the body). Both times I went looking for
+--   a bug in the grab code. The bug was that I'd asked a 5.6-stud arm to reach 7.9 studs.
+--
+--   THE VERTICAL DROP EATS THE REACH. Aiming low costs you forward range, because it's
+--   the same arm doing both.
+local REACH_DIST = 4
+local REACH_HEIGHT = 2.2 -- low enough to scoop a box off the floor, high enough that the
+-- arm isn't spending its whole length just getting down there
+
 local UP = Vector3.new(0, 1, 0)
 
 local function readAction(player: Player, name: string): Vector2
@@ -57,6 +75,12 @@ local function readCameraDir(player: Player): Vector3
 	local ctx = player:FindFirstChild("PlayContext")
 	local action = ctx and ctx:FindFirstChild("CameraDir")
 	return action and (action :: any):GetState() or Vector3.zero
+end
+
+local function readBool(player: Player, name: string): boolean
+	local ctx = player:FindFirstChild("PlayContext")
+	local action = ctx and ctx:FindFirstChild(name)
+	return action ~= nil and (action :: any):GetState() == true
 end
 
 local function totalMass(model: Model): number
@@ -102,6 +126,19 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 				base:SetAttribute("TargetDir", move.Unit)
 			end
 		end
+	end
+
+	-- Reaching is intent, so it's an attribute like any other: written by the owner,
+	-- rolled back with resimulation, read by every peer.
+	base:SetAttribute("Reaching", readBool(player, "Grab"))
+
+	-- You AIM A GRAB WITH THE CAMERA, not with your feet. The first version threw the
+	-- fists along his drive direction, which is fine while you're running at something
+	-- and completely useless when you're standing still next to it -- he'd lunge
+	-- confidently at wherever he last happened to be walking. Store where you're LOOKING.
+	local camF = readCameraDir(player)
+	if camF.Magnitude > 1e-3 then
+		base:SetAttribute("LookDir", camF)
 	end
 
 	-- Advance the hop clock by distance travelled. Stand still and it stops -- the clock
@@ -200,9 +237,47 @@ local function drive(man: Model, base: BasePart)
 		align.CFrame = CFrame.lookAt(Vector3.zero, faceDir :: Vector3) -- base -Z faces travel
 	end
 
+	-- THE REACH. Hold the button and both fists are hauled toward a point out in front of
+	-- him. The arms are noodles, so dragging a fist somewhere drags the whole arm after
+	-- it, and he lunges like a toddler grabbing at a cat.
+	--
+	-- This part is PREDICTED -- it's in the sim, driven by a rolled-back attribute -- so
+	-- the fists fly out the moment you click, with no round trip. Whether you actually
+	-- CAUGHT anything is a question only the server can answer (see CakeGrab), and that
+	-- split is the honest one: your lunge is yours, but what you're holding is a fact
+	-- about the world, and facts about the world belong to the server.
+	local reaching = base:GetAttribute("Reaching") == true
+	-- Aim where the player is LOOKING, falling back to where he's facing. (And note the
+	-- fallback is +LookVector: his facing IS his LookVector, because that's what the
+	-- Heading servo aligns. I had it negated, and he lunged backwards at nothing, very
+	-- confidently.)
+	local aimSrc = (base:GetAttribute("LookDir") :: Vector3?) or faceDir or base.CFrame.LookVector
+	local flat = aimSrc - UP * aimSrc.Y
+	local out = if flat.Magnitude > 1e-3 then flat.Unit else base.CFrame.LookVector
+	local right = out:Cross(UP)
+
+	for _, side in { "L", "R" } do
+		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
+		local reach = fist and fist:FindFirstChild("Reach") :: AlignPosition?
+		local grip = fist and fist:FindFirstChild("Grip") :: AlignPosition?
+		if fist and reach then
+			-- Don't fight your own grip: once you've caught something, stop lunging at it.
+			local holding = grip ~= nil and (grip :: AlignPosition).Enabled
+			local lunging = reaching and not holding
+			;(reach :: AlignPosition).Enabled = lunging
+			if lunging then
+				local lateral = right * (if side == "L" then -1.7 else 1.7)
+				;(reach :: AlignPosition).Position = base.Position
+					+ out * REACH_DIST
+					+ lateral
+					+ UP * REACH_HEIGHT
+			end
+		end
+	end
+
 	-- ...and that's the entire character. Layers, head and arms are never touched by
-	-- this code: they're along for the ride, dragged through their sockets by a base
-	-- that's going somewhere. All the wobble you see is the physics engine's, for free.
+	-- this code otherwise: they're along for the ride, dragged through their sockets by
+	-- a base that's going somewhere. All the wobble is the physics engine's, for free.
 end
 
 function CakeSim.Initialize()
