@@ -58,25 +58,16 @@ local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if h
 -- to everyone else exactly what you're about to try, which is precisely what you want in
 -- a brawler -- your intent is visible on your body, because your body IS the physics.
 --
--- The geometry is bounded by ARM LENGTH, and it's unforgiving. His shoulder sits ~6.4
--- studs up and the arm is 5 segments of ~1.1 = ~5.6 long. So a stance point 6 studs
--- FORWARD and 5 DOWN wants sqrt(6^2 + 5.2^2) = 7.9 studs of arm, and he has 5.6: the
--- fist strains at full extension, permanently short of where you told it to go, and
--- every grab misses by exactly the amount you overreached. I did this twice before I
--- worked out the arm simply wasn't long enough. THE VERTICAL DROP EATS THE REACH.
--- The stance is held in the SHOULDER LAYER'S OWN FRAME, not the world's and not the
--- base's. The arms hang off the top cake, and that layer is on a loose socket -- it
--- leans, it lags, it wobbles a beat behind the body. Put the hands out along a world
--- direction and the shoulders end up skewed to them: one arm reaching across his chest,
--- the other flung wide, the guard visibly crooked. Compute the pose relative to the part
--- the arms actually hang from and the shoulders are square by construction, with both
--- arms going straight out in front, whatever the rest of him is doing.
+-- WHERE THE POSE ITSELF LIVES: not here. The stance is a pair of attachments (StanceL,
+-- StanceR) on the shoulder layer of the rig, and the fists' Reach servo is anchored
+-- between the fist and one of them. So the guard is a property of his BODY, baked into
+-- the model, and this file only ever decides whether it's UP.
 --
--- (Note the offsets are LOCAL: forward, sideways and up as the shoulder layer sees them.)
-local STANCE_DIST = 3.6 -- how far in front of the shoulders the hands are held
-local STANCE_WIDTH = 2.1 -- and how far apart. A grappler's guard, not a lunge.
-local STANCE_RISE = -1.1 -- relative to the shoulder layer: hands a little below the
--- shoulders, so the arm isn't spending its whole length getting down to the floor
+-- Which also means the force is honest. A servo that hauls a fist toward a world
+-- coordinate pushes against nothing -- the momentum is conjured, the body never rocks
+-- back, and the whole thing feels floaty for reasons no player can name. Anchored to the
+-- shoulders with ReactionForceEnabled, throwing your hands out shoves your top cake
+-- backwards by exactly as much. He pays for his own guard, out of his own posture.
 
 -- THE COMMITMENT. Putting your hands up does NOT grab. For a full second you are just a
 -- cake standing there with its guard up, and only then do the hands become live.
@@ -293,10 +284,6 @@ local function drive(man: Model, base: BasePart, dt: number)
 	held = if reaching then held + dt else 0
 	base:SetAttribute("GuardTime", held)
 
-	-- The hands hang off the TOP layer, so the guard is posed in ITS frame -- see the note
-	-- on STANCE_DIST. If it's somehow missing, fall back to the base rather than throwing.
-	local shoulders = (man:FindFirstChild("Layer4") :: BasePart?) or base
-
 	for _, side in { "L", "R" } do
 		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
 		local reach = fist and fist:FindFirstChild("Reach") :: AlignPosition?
@@ -310,14 +297,13 @@ local function drive(man: Model, base: BasePart, dt: number)
 		local guarding = reaching and not holding
 		;(reach :: AlignPosition).Enabled = guarding
 
-		if guarding then
-			-- Straight out in front of the shoulders he actually has, not the ones the
-			-- world thinks he has. Forward is -Z, same as everything else in this rig.
-			local lateral = if side == "L" then -STANCE_WIDTH else STANCE_WIDTH
-			local stance = shoulders.CFrame * CFrame.new(lateral, STANCE_RISE, -STANCE_DIST)
-			local reachAlign = reach :: AlignPosition
-			reachAlign.Position = stance.Position
-		end
+		-- And that's the whole pose. THE SIMULATION NO LONGER KNOWS WHERE THE HANDS GO --
+		-- it just says whether the guard is up. Reach is anchored between the fist and a
+		-- StanceL/StanceR attachment on the shoulder layer, so the target rides the top
+		-- cake's own frame: it leans when he leans, and the shoulders stay square to the
+		-- hands without a line of CFrame maths in here. (It used to recompute a world
+		-- position every step. Every step of that was a chance for the pose and the body to
+		-- disagree, and one of them did.)
 
 		-- ARMED IS PURELY THE CLOCK. Not "has the fist arrived" -- a noodle arm on five
 		-- ball sockets arrives when it feels like it, and gating a player's input on that

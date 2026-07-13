@@ -126,6 +126,26 @@ local BODY_FRICTION = 700 -- the stack: firm, doughy, holds its shape
 local NECK_FRICTION = 90 -- the head: bobbles more freely
 local ARM_FRICTION = 8 -- the noodles: barely any, so they still flail
 
+-- THE GUARD. Where the hands are held when you hold the grab button, in the SHOULDER
+-- LAYER'S own frame -- which is why these live in the rig and not in the simulation. The
+-- pose is a property of the body, so it's baked into the body as a pair of attachments.
+--
+-- Bounded by ARM LENGTH, and unforgiving: the arm is 5 segments of ~1.1 = ~5.6 studs, and
+-- a stance that's 6 forward and 5 down wants sqrt(6^2 + 5.2^2) = 7.9 studs of arm. The
+-- fist then strains at full extension, permanently short of where you sent it, and every
+-- grab misses by exactly the amount you overreached. THE VERTICAL DROP EATS THE REACH.
+local STANCE_DIST = 3.6 -- how far in front of the shoulders the hands are held
+local STANCE_WIDTH = 2.1 -- and how far apart. A grappler's guard, not a lunge.
+local STANCE_RISE = -1.1 -- a little BELOW the shoulder line, so the arm isn't spending
+-- its whole length just getting down to the floor
+
+-- How hard the arms are allowed to haul themselves into the guard -- and, now that the
+-- servo is anchored to the shoulders, how hard they're allowed to shove HIM. Both arms
+-- loaded together weigh about 690 (mass ~3.5 each x g), so this is a few times what it
+-- takes to simply hold them up: brisk, but not enough to throw the top cake off its own
+-- socket. It was 26,000 when the force came from nowhere and nothing had to pay for it.
+local REACH_FORCE = 4000
+
 local function makePart(name: string, size: Vector3, color: Color3, density: number): Part
 	local p = Instance.new("Part")
 	p.Name = name
@@ -432,19 +452,49 @@ local function addActuators(man: Model)
 	-- cannot create an instance inside the simulation -- it would be created again on
 	-- every resimulated frame. Pre-wire everything the sim could ever need; the sim only
 	-- ever sets targets and flips Enabled.
+	local shoulders = man:FindFirstChild("Layer" .. LAYERS) :: BasePart
+
 	for _, side in { "L", "R" } do
 		local fist = man:FindFirstChild("Arm" .. side .. ARM_SEGMENTS) :: BasePart
 		local grabAtt = fist:FindFirstChild("GrabAtt") :: Attachment
 
-		-- REACH: shoots the fist out toward where you're aiming. A position servo on the
-		-- fist itself -- the arm is a noodle, so pulling the fist somewhere drags the
-		-- whole arm after it.
+		-- WHERE THE GUARD LIVES. A fixed point in the shoulder layer's own frame, one per
+		-- hand: out in front, apart, a little below the shoulder line. Because it's an
+		-- attachment ON the top cake rather than a world position we recompute every step,
+		-- it leans, lags and wobbles with him for free -- the shoulders are square to the
+		-- hands by construction, and the simulation never does a line of CFrame maths.
+		local stance = Instance.new("Attachment")
+		stance.Name = "Stance" .. side
+		stance.Parent = shoulders
+		stance.Position = Vector3.new(
+			if side == "L" then -STANCE_WIDTH else STANCE_WIDTH,
+			STANCE_RISE,
+			-STANCE_DIST -- forward is -Z, same as everything else in this rig
+		)
+
+		-- REACH: hauls the fist out to the guard. The arm is a noodle, so dragging the
+		-- fist somewhere drags the whole arm after it.
+		--
+		-- TWO attachments, not one, and THAT IS THE POINT. A OneAttachment AlignPosition
+		-- pulls its part toward a world coordinate -- and pulls against *nothing*. The
+		-- force comes from outside the universe: 26,000 studs of thrust, reacted by the
+		-- sky. Hold your guard up while standing on a box and the box doesn't care; throw
+		-- your hands forward and your body doesn't rock back. It's free momentum, and
+		-- players read free momentum as "floaty" long before they can tell you why.
+		--
+		-- Anchored to the shoulders instead, the same servo is honest: it drags the fist
+		-- toward the stance and, with ReactionForceEnabled, shoves the top cake the other
+		-- way by exactly as much. Throwing your hands out now rocks you backwards. Holding
+		-- a heavy guard costs you posture. Nothing is created; it's just borrowed from your
+		-- own body, which is where a real wrestler gets it from too.
 		local reach = Instance.new("AlignPosition")
 		reach.Name = "Reach"
-		reach.Mode = Enum.PositionAlignmentMode.OneAttachment
-		reach.Attachment0 = grabAtt
+		reach.Mode = Enum.PositionAlignmentMode.TwoAttachment
+		reach.Attachment0 = grabAtt -- the fist: this is the end that gets moved
+		reach.Attachment1 = stance -- toward the guard, and the shoulders eat the recoil
+		reach.ReactionForceEnabled = true
 		reach.RigidityEnabled = false
-		reach.MaxForce = 26000
+		reach.MaxForce = REACH_FORCE
 		reach.Responsiveness = 22
 		reach.Enabled = false
 		reach.Parent = fist

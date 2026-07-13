@@ -22,6 +22,36 @@ Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
 
 local rigTemplate = ServerStorage:WaitForChild("CakeManRig") :: Model
 
+-- CHECK THE RIG BEFORE YOU TRUST IT.
+--
+-- Now that the character is an artefact in the place rather than something this script
+-- builds, it can be WRONG in ways code never could: someone deletes an attachment in the
+-- explorer, an edit doesn't get saved, a constraint loses a reference. And a constraint
+-- with a nil Attachment does not error -- it simply applies no force, forever, in
+-- silence. This project has lost hours to that exact failure three separate times.
+--
+-- So: state the contract, check it at spawn, and be loud. An assert here costs one
+-- comparison per player and turns "the grab feels weak" into "Reach.Attachment1 is nil".
+local function checkRig(man: Model)
+	for _, side in { "L", "R" } do
+		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
+		local reach = fist and fist:FindFirstChild("Reach") :: AlignPosition?
+		if not reach then
+			warn("[CakeServer] rig is missing Arm" .. side .. "5.Reach -- the guard will not go up")
+			continue
+		end
+		if reach.Attachment1 == nil then
+			warn(
+				"[CakeServer] Arm" .. side .. "5.Reach has NO Attachment1 -- the guard servo has "
+					.. "nothing to pull against and will apply zero force. Re-run ServerStorage.GenerateRig "
+					.. "and SAVE THE PLACE."
+			)
+		elseif not reach.ReactionForceEnabled then
+			warn("[CakeServer] Arm" .. side .. "5.Reach has no reaction force -- his hands are pulling against the sky")
+		end
+	end
+end
+
 local function buildInputContext(player: Player)
 	if player:FindFirstChild("PlayContext") then
 		return
@@ -106,6 +136,7 @@ local function spawnCakeManFor(player: Player)
 	-- it's why the rig has to be built as ONE model rather than wired up after parenting.
 	local man = rigTemplate:Clone()
 	man.Name = name
+	checkRig(man)
 
 	-- One home base each. (Everything between the bases is a bridge over a pit, which is
 	-- where the game actually happens.)
