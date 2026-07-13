@@ -71,8 +71,19 @@ local LAYER_COLOR = {
 -- falling over, and always already caught. That IS the wobble.
 local JOINT_ANGLE = 6
 local JOINT_TWIST = 10
-local HEAD_ANGLE = 12 -- the head's a light little box on top, so it can lean further
-local HEAD_SIZE = Vector3.new(1.2, 1.2, 1.2)
+-- The head is a CHERRY. It's a mesh, and its authored size is 4.11 x 7.06 x 4.00 --
+-- nearly twice as tall as it is wide, because most of that height is STEM. Scale it
+-- like a cube and you get a squashed cherry with a stubby stem, so we pick a width and
+-- let the authored aspect ratio decide the rest. Always check what a mesh's bounding
+-- box actually contains before you size it: "tall" here means "mostly empty air".
+local CHERRY_MESH_ID = "rbxassetid://112675249551309"
+local CHERRY_SOURCE = Vector3.new(4.111819, 7.056720, 4.0) -- as authored
+local CHERRY_WIDTH = 1.9 -- the only number we choose; the rest follows
+local HEAD_SIZE = CHERRY_SOURCE * (CHERRY_WIDTH / CHERRY_SOURCE.X)
+
+local HEAD_ANGLE = 12 -- the head is light and sits on top, so it can lean further
+local HEAD_DENSITY = 0.3 -- keep it light: a heavy head on a loose socket drags the
+-- whole stack around instead of bobbling on top of it
 
 -- Arms are the exception: they HANG. A hanging chain is a normal pendulum, not an
 -- inverted one -- it's stable, so it can be as floppy as we like. Hence noodles.
@@ -124,23 +135,25 @@ end
 -- actually wrestles with should stay a cheap, well-behaved box -- especially the bottom
 -- layer, which is sliding across the floor all game. Detailed collision geometry on a
 -- part that slides is how you get it snagging on nothing.
-local cakeTemplate: MeshPart? = nil
-do
+local function buildMesh(assetId: string, label: string): MeshPart?
 	local ok, result = pcall(function()
 		return game:GetService("AssetService"):CreateMeshPartAsync(
-			CAKE_MESH_ID,
+			assetId,
 			{ CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Precise }
 		)
 	end)
 	if ok and result then
-		cakeTemplate = result
-		print("[CakeServer] built cake mesh from", CAKE_MESH_ID)
-	else
-		-- Falls back to plain boxes, and everything still works: the mesh is a costume,
-		-- not a mechanism, and no physics depends on it.
-		warn("[CakeServer] couldn't build the cake mesh -- falling back to boxes:", result)
+		print("[CakeServer] built " .. label .. " mesh from", assetId)
+		return result
 	end
+	-- Falls back to plain parts, and everything still works: the meshes are a costume,
+	-- not a mechanism, and no physics depends on them.
+	warn("[CakeServer] couldn't build the " .. label .. " mesh -- falling back to a box:", result)
+	return nil
 end
+
+local cakeTemplate: MeshPart? = buildMesh(CAKE_MESH_ID, "cake")
+local cherryTemplate: MeshPart? = buildMesh(CHERRY_MESH_ID, "cherry")
 
 local function makeLayer(name: string, size: Vector3, color: Color3, density: number): BasePart
 	if not cakeTemplate then
@@ -260,9 +273,28 @@ local function buildCakeMan(): Model
 		socket("Joint" .. i, layers[i], layers[i + 1], Vector3.new(0, jointY, 0), Vector3.yAxis, JOINT_ANGLE, JOINT_TWIST, BODY_FRICTION)
 	end
 
-	-- The head: one little box on top, on the same kind of socket. It's a cherry.
+	-- The head: a cherry on top, on the same kind of socket as everything else.
 	local topY = (LAYERS - 1) * LAYER_STEP
-	local head = makePart("Head", HEAD_SIZE, Color3.fromRGB(200, 60, 70), 0.4)
+	local head: BasePart
+	if cherryTemplate then
+		local c = (cherryTemplate :: MeshPart):Clone()
+		c.Name = "Head"
+		c.Size = HEAD_SIZE
+		-- CreateMeshPartAsync hands back a mesh in default grey, not in whatever colour
+		-- it was wearing in the place you copied it from. Colour it, or you get a very
+		-- sad-looking cherry.
+		c.Color = Color3.fromRGB(200, 30, 40)
+		c.Material = Enum.Material.SmoothPlastic
+		c.CustomPhysicalProperties = PhysicalProperties.new(HEAD_DENSITY, 0.3, 0.1, 1, 1)
+		head = c
+	else
+		head = makePart("Head", HEAD_SIZE, Color3.fromRGB(200, 60, 70), HEAD_DENSITY)
+	end
+	-- The socket goes at the BOTTOM of the head, as always -- which for a cherry means
+	-- at the bottom of the fruit, with the stem waving about above it. Because the mesh
+	-- is mostly stem, the head's centre sits much higher than you'd expect for a "head":
+	-- that's fine, but it does mean the thing has real leverage on the stack, which is
+	-- why HEAD_DENSITY is low.
 	head.CFrame = CFrame.new(0, topY + LAYER_SIZE.Y / 2 + GAP + HEAD_SIZE.Y / 2, 0)
 	head.Parent = man
 	socket(
