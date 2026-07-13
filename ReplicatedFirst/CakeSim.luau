@@ -37,7 +37,7 @@ local TURN_RATE = math.rad(720) -- how fast the FACING catches up (movement neve
 --   * it resimulates identically (a wall clock does not -- see the four rules),
 --   * and the cadence tracks his speed for free. Slow down and he hops slower, with no
 --     extra code. Speed and rhythm can't drift apart, because they're the same number.
-local HOP_STRIDE = 5.5 -- studs travelled per hop. Cadence = TARGET_SPEED / HOP_STRIDE.
+local HOP_STRIDE = 2.75 -- studs travelled per hop. Cadence = TARGET_SPEED / HOP_STRIDE.
 local HOP_WINDOW = 0.14 -- fraction of each cycle spent pushing off the ground
 local HOP_ACCEL = 520 -- upward accel during that window. It has to beat gravity (196)
 -- by a lot, because the window is short -- most of this number is just paying the rent.
