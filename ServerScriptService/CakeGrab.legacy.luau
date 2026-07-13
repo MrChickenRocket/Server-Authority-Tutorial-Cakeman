@@ -26,21 +26,28 @@
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
-local GRAB_RADIUS = 6.5 -- how close the fist must get. Keep it honest -- you have to
--- actually put your hand on the thing -- but be generous, because the fist is on the end
--- of five loose ball sockets and is emphatically NOT a precision instrument. A grab that
--- demands accuracy from a wobbling noodle is a grab that never lands.
+-- TOUCH, not proximity.
+--
+-- The old version swept a big radius around the fist and hoovered up the nearest
+-- grabbable thing, which felt like a tractor beam: you waved a hand in the general
+-- direction of a box and it leapt into your palm.
+--
+-- Now the hand has to actually be ON it. This radius is barely bigger than the fist
+-- itself -- it's a contact test, not a search. You put your guard up, you walk your man
+-- into your hands, and THEN you close them.
+local TOUCH_RADIUS = 1.6
 -- HOW FAR THE TARGET MAY STRAY BEFORE IT TEARS FREE.
 --
--- This MUST be bigger than GRAB_RADIUS, and that is not an obvious constraint until it
--- bites you: if you can grab something at 6.5 studs but the grip snaps at 5.5, then every
--- grab you land is *already* over the breaking distance and tears loose on the very first
--- frame. The grab succeeds and the hold fails, instantly, forever, and it looks for all
--- the world like the grip force is too weak.
+-- This MUST be comfortably bigger than the distance you can grab at, and that is not an
+-- obvious constraint until it bites you: I once had a grab radius of 6.5 and a break
+-- distance of 5.5, so every grab I landed was ALREADY past breaking and tore loose on the
+-- very first frame. The grab succeeded and the hold failed, instantly, forever, and it
+-- looked exactly like the grip force being too weak.
 --
--- The gap between the two numbers IS the slack in your grip: how far something can drag
--- you before you lose it.
-local GRIP_BREAK = 9
+-- The gap between the two IS the slack in your grip: how far something can drag you
+-- before you lose it. Now that you have to close your hands ON a thing, that slack can be
+-- generous -- you've earned the hold.
+local GRIP_BREAK = 7
 local GRIP_MAX_TIME = 12 -- nobody holds anything forever
 
 local menFolder = workspace:WaitForChild("CakeMen")
@@ -102,14 +109,14 @@ end
 -- you spend the match clutching your own midriff.
 local function findTarget(man: Model, fist: BasePart): BasePart?
 	local best: BasePart? = nil
-	local bestDist = GRAB_RADIUS
+	local bestDist = TOUCH_RADIUS + fist.Size.X
 
 	local params = OverlapParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { man } -- never yourself
 	params.MaxParts = 24
 
-	for _, part in workspace:GetPartBoundsInRadius(fist.Position, GRAB_RADIUS, params) do
+	for _, part in workspace:GetPartBoundsInRadius(fist.Position, TOUCH_RADIUS + fist.Size.X, params) do
 		if not part:IsA("BasePart") or part.Anchored then
 			continue
 		end
@@ -157,9 +164,10 @@ RunService.Heartbeat:Connect(function()
 		-- A knocked-out cake grabs nothing. He can, however, BE grabbed.
 		local downed = root:GetAttribute("Downed") == true
 
-		for _, fist in fistsOf(man) do
-			local grip = fist:FindFirstChild("Grip") :: AlignPosition?
-			if not grip then
+		for _, side in { "L", "R" } do
+			local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
+			local grip = fist and fist:FindFirstChild("Grip") :: AlignPosition?
+			if not fist or not grip then
 				continue
 			end
 			local hold = holds[grip]
@@ -179,7 +187,11 @@ RunService.Heartbeat:Connect(function()
 				if not reaching or downed or gone or stretch > GRIP_BREAK or now - hold.since > GRIP_MAX_TIME then
 					release(grip)
 				end
-			elseif reaching and not downed then
+			elseif reaching and not downed and root:GetAttribute("Armed" .. side) == true then
+				-- ARMED means the sim says this hand has actually reached its stance (or
+				-- has been trying for long enough that we've stopped waiting). A hand
+				-- that's still on its way out doesn't grab anything -- that's the whole
+				-- point of the pose. You commit, then you close.
 				local target = findTarget(man, fist)
 				if target then
 					local att = target:FindFirstChild("GrabAtt") :: Attachment

@@ -45,23 +45,38 @@ local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if h
 -- already rising or falling faster than this, the hop is spent. Without this check he
 -- boosts himself in mid-air on every cycle and floats away like a balloon.
 
--- HOW FAR THE FISTS ARE THROWN. This is not a taste decision, it's ARM LENGTH, and the
--- geometry is brutal:
+-- THE WRESTLER'S STANCE.
 --
---   His shoulder sits ~6.4 studs up. His arm is 5 segments of ~1.1 studs = ~5.6 long.
---   So reaching a point 6 studs FORWARD and 5 studs DOWN needs sqrt(6^2 + 5.2^2) = 7.9
---   studs of arm, and he has 5.6. The fist strains at full extension, permanently short,
---   and every grab misses by exactly the amount you overreached.
+-- Holding the grab button doesn't fire a magnet. It puts your HANDS UP: both fists are
+-- hauled to a fixed pose out in front of you -- apart, level, ready -- and they hold
+-- there. Only once they've actually ARRIVED do they become live, and then they grab the
+-- first thing they touch.
 --
---   I did this twice: asked for 9 (fist ended 8.6 studs from the box), then asked for 6
---   at floor height (fist ended 6.7 studs from the body). Both times I went looking for
---   a bug in the grab code. The bug was that I'd asked a 5.6-stud arm to reach 7.9 studs.
+-- This is a much better mechanic than "reach out and vacuum up whatever is nearest",
+-- which is what it was before. Now grabbing is something you COMMIT to: you put your
+-- guard up, and then you have to walk your opponent into your hands. The pose telegraphs
+-- to everyone else exactly what you're about to try, which is precisely what you want in
+-- a brawler -- your intent is visible on your body, because your body IS the physics.
 --
---   THE VERTICAL DROP EATS THE REACH. Aiming low costs you forward range, because it's
---   the same arm doing both.
-local REACH_DIST = 4
-local REACH_HEIGHT = 2.2 -- low enough to scoop a box off the floor, high enough that the
--- arm isn't spending its whole length just getting down there
+-- The geometry is bounded by ARM LENGTH, and it's unforgiving. His shoulder sits ~6.4
+-- studs up and the arm is 5 segments of ~1.1 = ~5.6 long. So a stance point 6 studs
+-- FORWARD and 5 DOWN wants sqrt(6^2 + 5.2^2) = 7.9 studs of arm, and he has 5.6: the
+-- fist strains at full extension, permanently short of where you told it to go, and
+-- every grab misses by exactly the amount you overreached. I did this twice before I
+-- worked out the arm simply wasn't long enough. THE VERTICAL DROP EATS THE REACH.
+local STANCE_DIST = 3.6 -- how far in front the hands are held
+local STANCE_WIDTH = 2.1 -- and how far apart. A grappler's guard, not a lunge.
+local STANCE_HEIGHT = 3.4 -- high enough that the arm isn't spending its whole length
+-- just getting down to the floor, low enough to still take a box off the deck
+local STANCE_REACHED = 1.6 -- how close a fist must get to its stance point before it's
+-- considered UP and ARMED. Loose, because the fist is on the end of five ball sockets
+-- and will never sit perfectly still -- demand precision from a noodle and it is never
+-- ready at all.
+local STANCE_TIMEOUT = 1.0 -- ...and arm anyway after this long, reached or not. A noodle
+-- arm can get snagged on a box, tangled in the other arm, or pinned against a wall, and
+-- without this you'd be standing there holding the button with your hands up and NOTHING
+-- HAPPENING, for reasons invisible to you. Never let a physical precondition be the only
+-- way out of a player's input: give it a clock as well.
 
 local UP = Vector3.new(0, 1, 0)
 
@@ -161,7 +176,7 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 end
 
 -- EVERY PEER: drive the actuators from the (owner-written) attributes.
-local function drive(man: Model, base: BasePart)
+local function drive(man: Model, base: BasePart, dt: number)
 	local thrust = base:FindFirstChild("Thrust") :: VectorForce?
 	local align = base:FindFirstChild("Heading") :: AlignOrientation?
 	if not thrust or not align then
@@ -237,20 +252,30 @@ local function drive(man: Model, base: BasePart)
 		align.CFrame = CFrame.lookAt(Vector3.zero, faceDir :: Vector3) -- base -Z faces travel
 	end
 
-	-- THE REACH. Hold the button and both fists are hauled toward a point out in front of
-	-- him. The arms are noodles, so dragging a fist somewhere drags the whole arm after
-	-- it, and he lunges like a toddler grabbing at a cat.
+	-- HANDS UP.
 	--
-	-- This part is PREDICTED -- it's in the sim, driven by a rolled-back attribute -- so
-	-- the fists fly out the moment you click, with no round trip. Whether you actually
-	-- CAUGHT anything is a question only the server can answer (see CakeGrab), and that
-	-- split is the honest one: your lunge is yours, but what you're holding is a fact
-	-- about the world, and facts about the world belong to the server.
+	-- Hold the button and both fists are hauled into the wrestler's stance and held
+	-- there. A fist becomes ARMED once it has actually ARRIVED (or once you've been
+	-- holding long enough that we stop waiting for it) -- and an armed fist grabs the
+	-- first thing it TOUCHES. Not the nearest thing in a radius: the thing it touches.
+	--
+	-- All of this is PREDICTED -- it's in the sim, driven by rolled-back attributes -- so
+	-- your guard goes up the instant you click, with no round trip. Whether you then
+	-- caught anything is a question only the server can answer (see CakeGrab). Your pose
+	-- is yours; what's in your hands is a fact about the world, and facts about the world
+	-- belong to the server.
 	local reaching = base:GetAttribute("Reaching") == true
-	-- Aim where the player is LOOKING, falling back to where he's facing. (And note the
-	-- fallback is +LookVector: his facing IS his LookVector, because that's what the
-	-- Heading servo aligns. I had it negated, and he lunged backwards at nothing, very
-	-- confidently.)
+
+	-- How long the guard has been up. Accumulated by dt into a rolled-back attribute --
+	-- which is the only kind of clock the simulation is allowed to have.
+	local held = (base:GetAttribute("GuardTime") :: number?) or 0
+	held = if reaching then held + dt else 0
+	base:SetAttribute("GuardTime", held)
+
+	-- Aim the stance where the player is LOOKING, not where his feet are pointing.
+	-- (The fallback is +LookVector: his facing IS his LookVector, because that's what the
+	-- Heading servo aligns it to. I had this negated once, and he put his guard up
+	-- behind himself, very confidently.)
 	local aimSrc = (base:GetAttribute("LookDir") :: Vector3?) or faceDir or base.CFrame.LookVector
 	local flat = aimSrc - UP * aimSrc.Y
 	local out = if flat.Magnitude > 1e-3 then flat.Unit else base.CFrame.LookVector
@@ -260,19 +285,26 @@ local function drive(man: Model, base: BasePart)
 		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
 		local reach = fist and fist:FindFirstChild("Reach") :: AlignPosition?
 		local grip = fist and fist:FindFirstChild("Grip") :: AlignPosition?
-		if fist and reach then
-			-- Don't fight your own grip: once you've caught something, stop lunging at it.
-			local holding = grip ~= nil and (grip :: AlignPosition).Enabled
-			local lunging = reaching and not holding
-			;(reach :: AlignPosition).Enabled = lunging
-			if lunging then
-				local lateral = right * (if side == "L" then -1.7 else 1.7)
-				;(reach :: AlignPosition).Position = base.Position
-					+ out * REACH_DIST
-					+ lateral
-					+ UP * REACH_HEIGHT
-			end
+		if not fist or not reach then
+			continue
 		end
+
+		-- Don't fight your own grip: once you've caught something, stop posing at it.
+		local holding = grip ~= nil and (grip :: AlignPosition).Enabled
+		local guarding = reaching and not holding
+		;(reach :: AlignPosition).Enabled = guarding
+
+		local armed = false
+		if guarding then
+			local stance = base.Position
+				+ out * STANCE_DIST
+				+ right * (if side == "L" then -STANCE_WIDTH else STANCE_WIDTH)
+				+ UP * STANCE_HEIGHT
+			;(reach :: AlignPosition).Position = stance
+			armed = (fist.Position - stance).Magnitude < STANCE_REACHED or held >= STANCE_TIMEOUT
+		end
+		-- The server reads this to decide whether this hand is allowed to close.
+		base:SetAttribute("Armed" .. side, armed)
 	end
 
 	-- ...and that's the entire character. Layers, head and arms are never touched by
@@ -295,7 +327,7 @@ function CakeSim.Initialize()
 				if isServer or player == localPlayer then
 					readInputIntoAttributes(base, player, dt)
 				end
-				drive(man :: Model, base)
+				drive(man :: Model, base, dt)
 			end
 		end
 	end)
