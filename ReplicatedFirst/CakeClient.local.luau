@@ -14,6 +14,11 @@ local smoothDamp = require(ReplicatedFirst:WaitForChild("Smoothing")).damp
 -- Run the SAME sim locally: this is client-side prediction.
 require(ReplicatedFirst:WaitForChild("CakeSim")).Initialize()
 
+-- Hide the raw physics and show the player a smoothed copy of it instead. Everything
+-- you actually SEE from here on is the presentation layer; the physics is just truth.
+local Presentation = require(ReplicatedFirst:WaitForChild("Presentation"))
+Presentation.Initialize()
+
 -- ---------------------------------------------------------------------------
 -- PREDICTION: WE DON'T MANAGE IT. THE ENGINE DOES.
 --
@@ -177,7 +182,11 @@ RunService:BindToRenderStep("CakeCamera", Enum.RenderPriority.Camera.Value, func
 	if not base then
 		return
 	end
-	local target = base.Position + Vector3.new(0, CAM_HEIGHT, 0)
+	-- Follow the SMOOTHED copy, not the truth. The truth is the thing that snaps when a
+	-- misprediction lands -- point a camera at it and every correction becomes a flick of
+	-- the whole screen, which is far more sickening than a character twitching.
+	local follow = Presentation.GetSmoothed(base) or base
+	local target = follow.Position + Vector3.new(0, CAM_HEIGHT, 0)
 	if not focus then
 		focus = target -- snap on the first frame, don't fly in from the origin
 	end
