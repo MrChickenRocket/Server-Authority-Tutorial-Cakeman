@@ -33,7 +33,14 @@ local HIT_COOLDOWN = 0.35 -- per attacker/victim pair, so one contact isn't twen
 -- the hardest thing on the character to hit, and the funniest thing to lose to.
 local CHERRY_KO_SPEED = 14 -- a solid connection with the cherry ends you, full stop
 
-local DOWNED_TIME = 2 -- seconds flat on your face
+-- Seconds flat on your face. This was 2, which turned out to be barely a stumble: you
+-- were up again before anyone could do anything ABOUT you, so a knockout cost you almost
+-- nothing and being the one who landed it won you almost nothing either.
+--
+-- Five is long enough to be a real event. It's the window in which a limp cake is just
+-- cargo -- long enough for someone to walk over, grab you, carry you to the edge and
+-- drop you in. The knockout isn't the punishment; it's the setup for the punishment.
+local DOWNED_TIME = 5
 local WAKE_HEALTH = 35 -- you come back with a bit of a boost, not on 1hp...
 local REGEN_RATE = 6 -- ...and then climb back to full at this many hp/sec
 

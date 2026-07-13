@@ -136,8 +136,9 @@ local ARM_FRICTION = 8 -- the noodles: barely any, so they still flail
 -- grab misses by exactly the amount you overreached. THE VERTICAL DROP EATS THE REACH.
 local STANCE_DIST = 4.4 -- how far in front of the shoulders the hands are held
 local STANCE_WIDTH = 2.1 -- and how far apart. A grappler's guard, not a lunge.
-local STANCE_RISE = -1.1 -- a little BELOW the shoulder line, so the arm isn't spending
--- its whole length just getting down to the floor
+local STANCE_RISE = -0.1 -- just under the shoulder line. Lower than this and the arm
+-- spends its length getting down to the floor instead of out in front (see above), and
+-- the guard reads as a shove rather than a grapple.
 
 -- How hard the arms are allowed to haul themselves into the guard -- and, now that the
 -- servo is anchored to the shoulders, how hard they're allowed to shove HIM. Both arms

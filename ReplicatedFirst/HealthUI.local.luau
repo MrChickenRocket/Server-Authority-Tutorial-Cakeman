@@ -24,7 +24,17 @@ local HURT = Color3.fromRGB(232, 190, 70)
 local BAD = Color3.fromRGB(222, 74, 74)
 local OUT = Color3.fromRGB(120, 120, 130)
 
-type Bar = { root: BasePart, gui: BillboardGui, fill: Frame, label: TextLabel }
+-- Remember what the label SAYS when nothing is wrong, so that a temporary state ("OUT
+-- COLD") has something to go back to. A UI that overwrites its own resting text and then
+-- never restores it will happily tell you someone is out cold for the rest of the round.
+type Bar = {
+	root: BasePart,
+	gui: BillboardGui,
+	fill: Frame,
+	label: TextLabel,
+	name: string, -- what the label reads when he's on his feet
+	color: Color3,
+}
 local bars: { [Model]: Bar } = {}
 
 local function build(man: Model): Bar?
@@ -76,7 +86,7 @@ local function build(man: Model): Bar?
 		label.TextColor3 = Color3.fromRGB(255, 236, 140)
 	end
 
-	return { root = root, gui = gui, fill = fill, label = label }
+	return { root = root, gui = gui, fill = fill, label = label, name = label.Text, color = label.TextColor3 }
 end
 
 RunService.RenderStepped:Connect(function()
@@ -112,9 +122,17 @@ RunService.RenderStepped:Connect(function()
 			elseif frac > 0.25 then HURT
 			else BAD
 
+		-- Both branches, always. The bug this replaces only had the first one, so the
+		-- label went to OUT COLD and stayed there forever -- the man got up, walked off
+		-- and carried on brawling with a sign over his head insisting he was unconscious.
+		-- Any UI that writes a state must also write its way back out of it.
 		if downed then
 			local left = (bar.root:GetAttribute("DownedFor") :: number?) or 0
 			bar.label.Text = string.format("OUT COLD (%.1f)", left)
+			bar.label.TextColor3 = OUT
+		else
+			bar.label.Text = bar.name
+			bar.label.TextColor3 = bar.color
 		end
 	end
 end)
