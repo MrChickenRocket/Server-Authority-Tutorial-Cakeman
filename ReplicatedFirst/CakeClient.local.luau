@@ -96,6 +96,64 @@ task.spawn(function()
 	end
 end)
 
+-- ---------------------------------------------------------------------------
+-- F6: PAINT THE PREDICTION BUBBLE.
+--
+-- You cannot tune a bubble you cannot see. This colours every prop by what the ENGINE
+-- says it's doing -- read back live from GetPredictionStatus, never from what we think
+-- we set -- so a bug in the bubble shows up as a wrongly-coloured box rather than as a
+-- vague feeling that punching things is sticky:
+--
+--   GREEN  Predicted     -- the client simulates and rolls it back. Punch it, it moves NOW.
+--   RED    None          -- not predicted. Punch it and you wait for the server.
+--   BLUE   Authoritative -- this client is the authority for it.
+--
+-- Purely a render concern: colour is client-local and touches no physics, so this is
+-- SA-inert -- it cannot cause a misprediction, which is exactly what a debug view for a
+-- prediction system had better not do.
+-- ---------------------------------------------------------------------------
+local STATUS_COLOR: { [Enum.PredictionStatus]: Color3 } = {
+	[Enum.PredictionStatus.Predicted] = Color3.fromRGB(70, 220, 110),
+	[Enum.PredictionStatus.None] = Color3.fromRGB(225, 70, 70),
+	[Enum.PredictionStatus.Authoritative] = Color3.fromRGB(80, 150, 255),
+}
+
+local debugPrediction = false
+local trueColor: { [BasePart]: Color3 } = {}
+
+UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+	if processed or input.KeyCode ~= Enum.KeyCode.F6 then
+		return
+	end
+	debugPrediction = not debugPrediction
+	if not debugPrediction then
+		for part, c in trueColor do
+			if part.Parent then
+				part.Color = c
+			end
+		end
+		table.clear(trueColor)
+	end
+	print("[CakeClient] prediction debug:", debugPrediction and "ON (green=predicted, red=not)" or "off")
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not debugPrediction then
+		return
+	end
+	for _, prop in CollectionService:GetTagged("Prop") do
+		if prop:IsA("BasePart") then
+			if not trueColor[prop] then
+				trueColor[prop] = prop.Color -- remember it so F6 can put it back
+			end
+			local c = STATUS_COLOR[RunService:GetPredictionStatus(prop)]
+			if c then
+				prop.Color = c
+			end
+		end
+	end
+end)
+
 -- CHARACTERS ARE ALWAYS ON, bubble or no bubble. Yours is the most critical instance in
 -- the game. Everyone else's is a heavy object you can run into -- and an opponent who
 -- isn't predicted locally means every player-vs-player collision waits on the server,
