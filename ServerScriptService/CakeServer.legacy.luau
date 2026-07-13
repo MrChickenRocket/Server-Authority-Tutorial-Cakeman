@@ -454,7 +454,15 @@ local function spawnCakeManFor(player: Player)
 	spawnIndex += 1
 	local man = buildCakeMan()
 	man.Name = name
-	man:PivotTo(CFrame.new(spawnIndex * 8, 3, 0))
+	-- One corner slab each. (The corners are the safe ground; everything between them is
+	-- a bridge over a pit, which is where the game happens.)
+	local corners = {
+		Vector3.new(-45, 6, -45),
+		Vector3.new(45, 6, -45),
+		Vector3.new(-45, 6, 45),
+		Vector3.new(45, 6, 45),
+	}
+	man:PivotTo(CFrame.new(corners[((spawnIndex - 1) % 4) + 1]))
 	-- Persistent, not merely Atomic. Atomic promises you'll never be sent HALF a
 	-- character; Persistent promises you'll always be sent the character AT ALL. In a
 	-- game about hitting each other, an opponent who streams out at range -- and so
@@ -491,6 +499,41 @@ local function despawnCakeManFor(player: Player)
 		man:Destroy()
 	end
 end
+
+-- Fall in a pit and you come back. We TELEPORT the existing cake rather than destroying
+-- and rebuilding it: a respawn that swaps the model out invalidates every reference the
+-- client is holding (its presentation copies, its prediction, its camera subject), and
+-- you get a visible hitch for no reason. Move him instead, and zero his velocity so he
+-- doesn't arrive still falling.
+local KILL_Y = -40
+local SPAWN_POINTS = {
+	Vector3.new(-45, 6, -45),
+	Vector3.new(45, 6, -45),
+	Vector3.new(-45, 6, 45),
+	Vector3.new(45, 6, 45),
+}
+
+local function respawn(man: Model, index: number)
+	local point = SPAWN_POINTS[(index % #SPAWN_POINTS) + 1]
+	man:PivotTo(CFrame.new(point))
+	for _, p in man:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.AssemblyLinearVelocity = Vector3.zero
+			p.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+local fallIndex = 0
+game:GetService("RunService").Heartbeat:Connect(function()
+	for _, man in menFolder:GetChildren() do
+		local root = (man :: Model).PrimaryPart
+		if root and root.Position.Y < KILL_Y then
+			fallIndex += 1
+			respawn(man :: Model, fallIndex)
+		end
+	end
+end)
 
 Players.PlayerAdded:Connect(spawnCakeManFor)
 Players.PlayerRemoving:Connect(despawnCakeManFor)
