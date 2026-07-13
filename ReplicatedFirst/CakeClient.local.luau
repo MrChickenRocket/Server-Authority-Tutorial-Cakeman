@@ -15,6 +15,58 @@ local smoothDamp = require(ReplicatedFirst:WaitForChild("Smoothing")).damp
 require(ReplicatedFirst:WaitForChild("CakeSim")).Initialize()
 
 -- ---------------------------------------------------------------------------
+-- PREDICT THE PROPS, EXPLICITLY.
+--
+-- By default the engine predicts instances with simulation access NEAR THE LOCAL
+-- CHARACTER, and decides for itself what "near" means (there's an engine-managed
+-- simulation radius you don't get to set -- push Player.SimulationRadius and it just
+-- drifts back). Which means a box you're about to hit may only have joined your
+-- predicted world moments ago: you punch it, and the punch goes to the server and back
+-- before it moves. That's the lag you feel on props, and no amount of network
+-- ownership fiddling fixes it -- SetNetworkOwner is meaningless under Server Authority,
+-- the server owns everything by definition.
+--
+-- RunService:SetPredictionMode(instance, PredictionMode.On) forces an instance to ALWAYS
+-- be predicted and rolled back, near or far. It's client-only, and it's the knob for
+-- exactly this: "for Instances critical to your experience, use this setting."
+--
+-- The cost is real -- every forced instance participates in every rollback -- so this
+-- is a decision about which objects the game is ABOUT. Here that's the boxes: hitting
+-- them is the whole verb.
+-- ---------------------------------------------------------------------------
+local CollectionService = game:GetService("CollectionService")
+
+local function predictAlways(inst: Instance)
+	if inst:IsA("BasePart") then
+		RunService:SetPredictionMode(inst, Enum.PredictionMode.On)
+	end
+end
+
+for _, prop in CollectionService:GetTagged("Prop") do
+	predictAlways(prop)
+end
+CollectionService:GetInstanceAddedSignal("Prop"):Connect(predictAlways)
+
+-- And every CakeMan -- yours and everyone else's. Yours is the most critical instance
+-- in the game and the engine would predict it anyway (it's your Character, it's right
+-- here); saying so explicitly costs nothing and documents the intent. THEIRS is the
+-- interesting one: a remote player's cake is a heavy object you can run into, and if
+-- it isn't predicted locally, every collision with another player waits on the server.
+task.spawn(function()
+	local men = workspace:WaitForChild("CakeMen")
+	local function predictCharacter(man: Instance)
+		for _, p in man:GetDescendants() do
+			predictAlways(p)
+		end
+		man.DescendantAdded:Connect(predictAlways)
+	end
+	for _, man in men:GetChildren() do
+		predictCharacter(man)
+	end
+	men.ChildAdded:Connect(predictCharacter)
+end)
+
+-- ---------------------------------------------------------------------------
 -- THE CAMERA IS YOURS NOW.
 --
 -- In a Server Authority place with no Humanoid, Roblox does not give you the stock
