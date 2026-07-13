@@ -24,13 +24,24 @@ local MAX_HEALTH = 100
 -- Damage is momentum, basically: how fast did it hit you, and how much of it was there.
 -- A fist that's just resting against you does nothing; the same fist swung at the end of
 -- a whipping noodle arm does a lot.
+-- These were 1.6 and 0.9, and everything died far too quickly: two clean punches and a
+-- man was finished, so fights were over before anyone had time to be funny in them. This
+-- is a game about a cake with noodles for arms -- the flailing IS the content, and you
+-- need to survive long enough to do some. Both are now a FIFTH of what they were, so a
+-- brawl is a long, silly, escalating mess instead of a duel.
+--
+-- Chip damage is meant to be chip damage. The cherry is what ends you.
 local HIT_SPEED_MIN = 18 -- below this it's a nudge, not a punch
-local FIST_DAMAGE = 1.6 -- per stud/sec of impact speed above the threshold
-local BOX_DAMAGE = 0.9 -- boxes are lighter, so they hurt less -- but they're everywhere
+local FIST_DAMAGE = 0.32 -- per stud/sec of impact speed above the threshold
+local BOX_DAMAGE = 0.18 -- boxes are lighter, so they hurt less -- but they're everywhere
 local HIT_COOLDOWN = 0.35 -- per attacker/victim pair, so one contact isn't twenty hits
 
--- The cherry is the kill shot. It sits on top, on a loose socket, bobbing around --
--- the hardest thing on the character to hit, and the funniest thing to lose to.
+-- The cherry is the kill shot, and it is DELIBERATELY untouched by the above. It doesn't
+-- deal damage at all -- it doesn't care about your hit points -- it simply ends you. So
+-- as everything else gets softer, the cherry gets relatively deadlier: it goes from being
+-- one good way to win a fight to being the ONLY quick way. Which is what you want from
+-- the hardest target on the body: a wobbling sweet on a loose socket, the funniest
+-- possible thing to lose to.
 local CHERRY_KO_SPEED = 14 -- a solid connection with the cherry ends you, full stop
 
 -- Seconds flat on your face. This was 2, which turned out to be barely a stumble: you
@@ -42,7 +53,14 @@ local CHERRY_KO_SPEED = 14 -- a solid connection with the cherry ends you, full 
 -- drop you in. The knockout isn't the punishment; it's the setup for the punishment.
 local DOWNED_TIME = 5
 local WAKE_HEALTH = 35 -- you come back with a bit of a boost, not on 1hp...
-local REGEN_RATE = 6 -- ...and then climb back to full at this many hp/sec
+-- ...and then climb back to full at this many hp/sec.
+--
+-- THIS HAD TO COME DOWN WITH THE DAMAGE, or "5x less damage" would have quietly meant "no
+-- damage". Regen is a race against incoming hits: at 6/sec it was erasing a whole softened
+-- punch in about a second, so nobody could ever be worn down and the only thing that
+-- worked would have been the cherry. Scaled by the same fifth, the ratio is exactly what
+-- it was -- fights just take five times longer, which was the point.
+local REGEN_RATE = 1.2
 
 local menFolder = workspace:WaitForChild("CakeMen")
 
