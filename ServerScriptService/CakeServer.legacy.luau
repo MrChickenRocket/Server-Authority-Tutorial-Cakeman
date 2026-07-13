@@ -15,8 +15,14 @@ Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
 -- Every limb here is the SAME construction: a chain of parts, ball socket between
 -- each, a gap so they don't grind, and a spring pulling each back toward its rest
 -- pose. Learn it once, and arms, head and body are all the same three lines.
+-- The body layers are built from a cake MESH (workspace.Cake -- meshId
+-- rbxassetid://97264442734279). We lift it out of the world at boot and keep it as a
+-- template. If it isn't there, the code below falls back to plain boxes and everything
+-- still works: the mesh is a costume, not a mechanism, and no physics depends on it.
+local CAKE_MESH_NAME = "Cake"
+
 local LAYERS = 4
-local LAYER_SIZE = Vector3.new(3, 1, 3) -- one cake layer
+local LAYER_SIZE = Vector3.new(4, 1.4, 4) -- one cake layer
 local GAP = 0.25 -- air between every jointed pair. Without it, parts grind and buzz.
 local LAYER_STEP = LAYER_SIZE.Y + GAP
 
@@ -90,6 +96,42 @@ local function makePart(name: string, size: Vector3, color: Color3, density: num
 	-- thrust fights the floor forever. Density is a FEEL knob.
 	p.CustomPhysicalProperties = PhysicalProperties.new(density, 0.3, 0.1, 1, 1)
 	return p
+end
+
+-- Take the cake mesh out of the world once, at boot, and hold it as a template.
+-- (Left in Workspace it's just a prop lying on the floor, and it would be replicated
+-- to every client as scenery.)
+local cakeTemplate: MeshPart? = nil
+do
+	local found = workspace:FindFirstChild(CAKE_MESH_NAME)
+	if found and found:IsA("MeshPart") then
+		found.Parent = nil
+		cakeTemplate = found
+		print("[CakeServer] using cake mesh", found.MeshId)
+	else
+		warn("[CakeServer] no workspace." .. CAKE_MESH_NAME .. " MeshPart -- falling back to boxes")
+	end
+end
+
+local function makeLayer(name: string, size: Vector3, color: Color3, density: number): BasePart
+	if not cakeTemplate then
+		return makePart(name, size, color, density)
+	end
+	local layer = (cakeTemplate :: MeshPart):Clone()
+	layer.Name = name
+	layer.Size = size -- MeshParts scale to whatever Size you give them
+	layer.Color = color
+	layer.Material = Enum.Material.SmoothPlastic
+	-- NOTE: CollisionFidelity is deliberately NOT set here -- a Script isn't allowed to
+	-- write it (it needs Plugin capability, and you'll get "cannot write
+	-- 'CollisionFidelity' (lacking capability Plugin)" at runtime). Clones inherit it
+	-- from the template, so set it ON THE MESH in Studio instead. Set it to **Box**:
+	-- the mesh is a costume, and the thing the physics engine actually wrestles with
+	-- should stay a cheap, well-behaved box -- especially the bottom layer, which is
+	-- sliding across the floor all game. Detailed collision on a sliding part is how
+	-- you get it snagging on nothing.
+	layer.CustomPhysicalProperties = PhysicalProperties.new(density, 0.3, 0.1, 1, 1)
+	return layer
 end
 
 -- Ball-socket two parts together at the point BETWEEN them, and never let them
@@ -170,9 +212,9 @@ local function buildCakeMan(): Model
 	man.Name = "CakeMan"
 
 	-- The body: four cake layers.
-	local layers: { Part } = {}
+	local layers: { BasePart } = {}
 	for i = 1, LAYERS do
-		local layer = makePart("Layer" .. i, LAYER_SIZE, LAYER_COLOR[i], LAYER_DENSITY[i])
+		local layer = makeLayer("Layer" .. i, LAYER_SIZE, LAYER_COLOR[i], LAYER_DENSITY[i])
 		layer.CFrame = CFrame.new(0, (i - 1) * LAYER_STEP, 0)
 		layer.Parent = man
 		layers[i] = layer
@@ -277,7 +319,7 @@ end
 --   Heading.CFrame (AlignOrientation: face the drive direction, stay upright)
 -- Nothing else is driven. Everything above the base is joints and gravity.
 local function addActuators(man: Model)
-	local base = man.PrimaryPart :: Part
+	local base = man.PrimaryPart :: BasePart -- a MeshPart once the cake mesh is in play
 	local att = Instance.new("Attachment")
 	att.Name = "DriveAtt"
 	att.Parent = base
