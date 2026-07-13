@@ -30,6 +30,21 @@ local TURN_RATE = math.rad(720) -- how fast the FACING catches up (movement neve
 -- and the arms -- which are just noodles with heavy fists, obeying nothing but
 -- physics -- get flung out sideways. Nothing animates that. It's free.
 
+-- THE HOP. He has no legs, so he bounces -- little bird hops as he trundles along.
+--
+-- The clock that drives it advances by DISTANCE TRAVELLED, not by time. This is not a
+-- stylistic choice, it's the only thing that works:
+--   * it resimulates identically (a wall clock does not -- see the four rules),
+--   * and the cadence tracks his speed for free. Slow down and he hops slower, with no
+--     extra code. Speed and rhythm can't drift apart, because they're the same number.
+local HOP_STRIDE = 5.5 -- studs travelled per hop. Cadence = TARGET_SPEED / HOP_STRIDE.
+local HOP_WINDOW = 0.14 -- fraction of each cycle spent pushing off the ground
+local HOP_ACCEL = 520 -- upward accel during that window. It has to beat gravity (196)
+-- by a lot, because the window is short -- most of this number is just paying the rent.
+local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if he's
+-- already rising or falling faster than this, the hop is spent. Without this check he
+-- boosts himself in mid-air on every cycle and floats away like a balloon.
+
 local UP = Vector3.new(0, 1, 0)
 
 local function readAction(player: Player, name: string): Vector2
@@ -89,6 +104,13 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 		end
 	end
 
+	-- Advance the hop clock by distance travelled. Stand still and it stops -- the clock
+	-- IS the speedometer, so he can't hop on the spot without meaning to.
+	local v = base.AssemblyLinearVelocity
+	local speed = (v - UP * v.Y).Magnitude
+	local hop = (base:GetAttribute("HopPhase") :: number?) or 0
+	base:SetAttribute("HopPhase", (hop + speed * dt / HOP_STRIDE) % 1)
+
 	-- The FACING chases the movement at TURN_RATE. Movement itself never waits.
 	local tdir = base:GetAttribute("TargetDir") :: Vector3?
 	if tdir then
@@ -118,17 +140,30 @@ local function drive(man: Model, base: BasePart)
 	local vFlat = base.AssemblyLinearVelocity
 	vFlat = vFlat - UP * vFlat.Y -- servo the HORIZONTAL velocity; gravity owns vertical
 
+	local force: Vector3
 	if driving and moveDir then
 		-- Velocity servo: feed-forward breaks drag (tapering off past the target),
 		-- while the gap term closes to TARGET_SPEED and goes NEGATIVE above it, so
 		-- it's a cap. Accelerations ramp; ramps hide corrections. Never snap.
 		local along = vFlat:Dot(moveDir)
 		local ffScale = math.clamp(1 - (along - TARGET_SPEED) / (TARGET_SPEED * (FF_TAPER_END - 1)), 0, 1)
-		thrust.Force = (moveDir * (FRICTION_FF * ffScale)
+		force = (moveDir * (FRICTION_FF * ffScale)
 			+ (moveDir * TARGET_SPEED - vFlat) * ACCEL_GAIN) * mass
 	else
-		thrust.Force = -vFlat * (COAST_DRAG * mass) -- coast to rest, no hard brake
+		force = -vFlat * (COAST_DRAG * mass) -- coast to rest, no hard brake
 	end
+
+	-- The hop. Push off during the early slice of each cycle, and only while he's
+	-- actually resting on something. Everything above the base is dragged into the air
+	-- a beat later through the joints -- so the cake squashes on the way up and the
+	-- cherry keeps going after he lands. None of that is animated. It's the same lag
+	-- that makes him wobble, now working vertically.
+	local hopPhase = (base:GetAttribute("HopPhase") :: number?) or 0
+	local vy = base.AssemblyLinearVelocity.Y
+	if driving and hopPhase < HOP_WINDOW and math.abs(vy) < HOP_GROUNDED_VY then
+		force += UP * (HOP_ACCEL * mass)
+	end
+	thrust.Force = force
 
 	if faceDir and (faceDir :: Vector3).Magnitude > 1e-3 then
 		align.CFrame = CFrame.lookAt(Vector3.zero, faceDir :: Vector3) -- base -Z faces travel

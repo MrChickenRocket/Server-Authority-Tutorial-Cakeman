@@ -96,6 +96,41 @@ through joints and every one of them is dead weight the base has to drag.
 last moment.** That means the knobs keep their meaning when you change the rig. Change
 a density, and you don't have to retune the character.
 
+## The hop, and why its clock runs on distance
+
+He has no legs, so he bounces — little bird hops as he trundles along. The whole thing
+is one clock and one force:
+
+```lua
+-- owner, each step: advance the clock by DISTANCE TRAVELLED
+local speed = (v - UP * v.Y).Magnitude
+base:SetAttribute("HopPhase", (hop + speed * dt / HOP_STRIDE) % 1)
+
+-- every peer: push off during the early slice of each cycle, if he's on the ground
+if driving and hopPhase < HOP_WINDOW and math.abs(vy) < HOP_GROUNDED_VY then
+	force += UP * (HOP_ACCEL * mass)
+end
+```
+
+**The clock advances by distance, not by time.** That isn't a stylistic choice, it's the
+only thing that works:
+
+- it **resimulates identically** — a wall clock does not, and this code re-runs several
+  times a frame;
+- and the cadence **tracks his speed for free**. Slow down and he hops slower, with no
+  extra code. Speed and rhythm cannot drift apart, because they are the same number.
+
+Measured: 0.48 studs high, **2.6 hops/second** at a cruise of 12.9 — which is
+`speed / HOP_STRIDE` to within measurement noise. The rhythm is not tuned. It's derived.
+
+The grounded check (`math.abs(vy) < HOP_GROUNDED_VY`) is doing more work than it looks.
+Without it he boosts himself in mid-air on every cycle and floats away like a balloon.
+
+And the best part is free: the base hops, and everything above it is **dragged into the
+air a beat later through the joints**. The cake squashes on the way up, and the cherry
+keeps going after he's landed. Nobody animated that. It's the same lag that makes him
+wobble, now working vertically.
+
 ## Facing: the body carves, the nose catches up
 
 Movement uses the target direction **immediately**. The *facing* slews toward it

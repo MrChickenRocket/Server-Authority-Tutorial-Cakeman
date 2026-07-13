@@ -285,6 +285,7 @@ local function buildCakeMan(): Model
 		-- sad-looking cherry.
 		c.Color = Color3.fromRGB(200, 30, 40)
 		c.Material = Enum.Material.SmoothPlastic
+		c.Reflectance = 0.25 -- glacé. It should catch the light like a wet sweet.
 		c.CustomPhysicalProperties = PhysicalProperties.new(HEAD_DENSITY, 0.3, 0.1, 1, 1)
 		head = c
 	else
