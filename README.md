@@ -37,7 +37,7 @@ ServerScriptService/
 ## Status
 
 Checkpoint 1 (spawn → input → shared sim → camera-relative driving) verified
-in-place. Legs, polite rendering, and the cake round are in progress.
+in-place. Legs, the presentation layer, and the cake round are in progress.
 
 ## Starting your own SA game
 

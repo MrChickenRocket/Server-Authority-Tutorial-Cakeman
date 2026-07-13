@@ -16,13 +16,13 @@ local camera = workspace.CurrentCamera
 camera.CameraType = Enum.CameraType.Custom -- stock orbit/zoom camera
 
 -- Point the stock camera at our CakeMan once it exists. (A smoothed camera
--- proxy arrives with the polite-rendering chapter; direct-follow is fine to
+-- proxy arrives with the presentation-layer chapter; direct-follow is fine to
 -- start with.)
 task.spawn(function()
 	local men = workspace:WaitForChild("CakeMen")
 	local man = men:WaitForChild("CakeMan_" .. localPlayer.UserId)
-	local hips = man:WaitForChild("Hips")
-	camera.CameraSubject = hips :: BasePart
+	local base = man:WaitForChild("Layer1") -- the bottom layer is the root
+	camera.CameraSubject = base :: BasePart
 end)
 
 -- Default zoom: pin min=max for two frames to force the distance, then reopen.

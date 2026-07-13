@@ -108,7 +108,7 @@ Symptom table:
 
 ## 6. What comes next (point, don't build)
 
-Wobble mass, gait/feet, and polite rendering (hiding correction jitter behind a
+Wobble mass, gait/feet, and the presentation layer (hiding correction jitter behind a
 client-only smoothed proxy — remember `CanQuery = false` on every client-side
 visual part, or sim raycasts hit client-only geometry and mispredict). Follow
 the chapter order in this repo's tutorial rather than improvising the order.

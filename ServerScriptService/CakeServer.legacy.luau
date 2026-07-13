@@ -5,6 +5,76 @@ local ReplicatedFirst = game:GetService("ReplicatedFirst")
 
 Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
 
+-- CakeMan is a walking cake: a stack of layers on loose ball sockets, with noodly
+-- arms and a little box head hung off the same joints. The BOTTOM layer is the
+-- root -- the only part we drive -- and everything else just wobbles along behind.
+-- No legs, no gait, no balance controller. The wobble is free: it's what a stack of
+-- blocks on loose joints does all by itself, and the physics engine does all the
+-- work we would otherwise have written (badly).
+--
+-- Every limb here is the SAME construction: a chain of parts, ball socket between
+-- each, a gap so they don't grind, and a spring pulling each back toward its rest
+-- pose. Learn it once, and arms, head and body are all the same three lines.
+local LAYERS = 4
+local LAYER_SIZE = Vector3.new(3, 1, 3) -- one cake layer
+local GAP = 0.25 -- air between every jointed pair. Without it, parts grind and buzz.
+local LAYER_STEP = LAYER_SIZE.Y + GAP
+
+-- Density per layer, bottom to top. HEAVY AT THE BOTTOM is the entire stability
+-- plan: a bottom-heavy stack rights itself, a top-heavy one falls over. It's also
+-- the fun knob -- make the top layers heavier and he gets genuinely unruly.
+-- Keep the upper layers LIGHT. It's not just about not toppling: the lighter they
+-- are, the less gravity torque the joints have to resist, and so the less joint
+-- friction you need to hold him up -- and joint friction is expensive. Wound up too
+-- high (2200) it effectively welds the joints, and the solver burns the thrust
+-- fighting the character's own constraints: he lurches, stalls, and crawls at 3
+-- studs/s while the thrust force screams up past 14,000. Light on top, cheap joints.
+local LAYER_DENSITY = { 8, 0.5, 0.35, 0.2 }
+local LAYER_COLOR = {
+	Color3.fromRGB(120, 72, 48), -- chocolate base
+	Color3.fromRGB(240, 226, 200), -- sponge
+	Color3.fromRGB(226, 128, 150), -- strawberry
+	Color3.fromRGB(250, 245, 235), -- icing
+}
+
+-- THE CONE ANGLE IS THE POSE, not a safety rail -- and with no springs anywhere it
+-- has to be, because every one of these joints is an INVERTED PENDULUM: the socket
+-- sits below its layer's centre of mass, so the layer will always topple to its cone
+-- limit and rest there. Nothing is holding it up. So the cone must be tight enough
+-- that "fully toppled" still reads as a standing cake: 6 degrees a joint, three
+-- joints, and a fully-slumped CakeMan is still only leaning about 18. He is always
+-- falling over, and always already caught. That IS the wobble.
+local JOINT_ANGLE = 6
+local JOINT_TWIST = 10
+local HEAD_ANGLE = 12 -- the head's a light little box on top, so it can lean further
+local HEAD_SIZE = Vector3.new(1.2, 1.2, 1.2)
+
+-- Arms are the exception: they HANG. A hanging chain is a normal pendulum, not an
+-- inverted one -- it's stable, so it can be as floppy as we like. Hence noodles.
+local ARM_SEGMENTS = 4 -- more segments = noodlier. This is the whole trick.
+local ARM_SIZE = Vector3.new(0.85, 0.7, 0.85) -- chunky noodles: thin ones read as
+-- twigs and vanish at any distance. Fat and floppy is the look.
+local FIST_SCALE = 1.5 -- the last segment is a FIST: a heavy blob on the end of a
+-- noodle. Mass at the end of a whip is what gives it something to throw around --
+-- and it's what makes a fast turn fling his arms out instead of just rotating them.
+local FIST_DENSITY = 1.2 -- and it's dense: this is the business end
+local ARM_ANGLE = 45 -- floppy: wide cones, four of them in series
+
+-- Joint friction. A frictionless ball socket is a perfect bearing -- it rattles and
+-- swings forever, like a skeleton hung on fishing wire. A little friction in each
+-- joint is what makes the character feel like it's made of CAKE: it resists being
+-- moved, and it stops moving when you stop. This is the single best-value knob in
+-- the whole rig, and it costs one property.
+-- Size the body's friction against GRAVITY'S torque on a layer (roughly mass x
+-- gravity x half a stud of lever -- about 2000 here). Under that, the stack simply
+-- sags to its cone limits and stays slumped; at about that value, friction HOLDS
+-- the pose until something bigger than gravity comes along -- which is to say, until
+-- you accelerate, turn, or hit something. Then it deforms, and STAYS deformed.
+-- That's not a spring, it's PLASTIC, and plastic is exactly what cake is.
+local BODY_FRICTION = 700 -- the stack: firm, doughy, holds its shape
+local NECK_FRICTION = 90 -- the head: bobbles more freely
+local ARM_FRICTION = 8 -- the noodles: barely any, so they still flail
+
 local function makePart(name: string, size: Vector3, color: Color3, density: number): Part
 	local p = Instance.new("Part")
 	p.Name = name
@@ -13,75 +83,144 @@ local function makePart(name: string, size: Vector3, color: Color3, density: num
 	p.Material = Enum.Material.SmoothPlastic
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
-	-- density, friction, elasticity (+weights). Density is a FEEL knob: the whole
-	-- character tunes in acceleration units, but relative mass decides what wobbles.
-	p.CustomPhysicalProperties = PhysicalProperties.new(density, 0.4, 0.2, 1, 1)
+	-- density, friction, elasticity (+weights). Low friction: this thing SLIDES on
+	-- its bottom layer (it has no legs -- it's a cake). High friction just means the
+	-- thrust fights the floor forever. Density is a FEEL knob.
+	p.CustomPhysicalProperties = PhysicalProperties.new(density, 0.3, 0.1, 1, 1)
 	return p
 end
 
+-- Ball-socket two parts together at the point BETWEEN them, and never let them
+-- collide (adjacent jointed parts grind on each other and jitter).
+local function socket(
+	name: string,
+	lower: BasePart,
+	upper: BasePart,
+	jointPos: Vector3,
+	angle: number,
+	twist: number,
+	friction: number
+)
+	-- PARENT FIRST, then set WorldCFrame. An Attachment with no parent has no world
+	-- to be positioned in, so assigning WorldCFrame early is silently thrown away --
+	-- every joint then sits at its part's origin and the whole character collapses
+	-- into itself on spawn. (Ask me how I know.)
+	local a0 = Instance.new("Attachment")
+	a0.Name = name .. "_A0"
+	a0.Parent = lower
+	a0.WorldCFrame = CFrame.new(jointPos)
+	local a1 = Instance.new("Attachment")
+	a1.Name = name .. "_A1"
+	a1.Parent = upper
+	a1.WorldCFrame = CFrame.new(jointPos)
+
+	-- Ball sockets DON'T merge assemblies: every part stays its own body, so a force
+	-- on the base drags the rest along through the joint chain. That lag IS the wobble.
+	local j = Instance.new("BallSocketConstraint")
+	j.Name = name
+	j.Attachment0 = a0
+	j.Attachment1 = a1
+	j.LimitsEnabled = true
+	j.UpperAngle = angle
+	j.TwistLimitsEnabled = true
+	j.TwistLowerAngle = -twist
+	j.TwistUpperAngle = twist
+	j.MaxFrictionTorque = friction -- the doughiness. See the constants above.
+	j.Parent = lower
+
+	local nc = Instance.new("NoCollisionConstraint")
+	nc.Part0 = lower
+	nc.Part1 = upper
+	nc.Parent = lower
+end
+
+-- NO SPRINGS ANYWHERE. Nothing holds these joints up: the sockets and their limits
+-- ARE the character. Everything above the base is free to flop as far as its cone
+-- allows and no further, which is why the cone angles below are the real tuning
+-- knobs -- they're not safety rails, they're the pose.
+--
+-- (I did build a sprung version first, with a restoring torque per part. It stood up
+-- straighter and it was strictly worse: the springs quietly cancelled the very lag
+-- that makes the thing look like a cake. Raw joints, one driven part, done.)
 local function buildCakeMan(): Model
 	local man = Instance.new("Model")
 	man.Name = "CakeMan"
 
-	-- Hips: the root everything drives through, and the ballast — most of the
-	-- character's mass lives down here so the plate up top can wobble without
-	-- dragging the body around. Forward is -Z. (The legs arrive in a later
-	-- chapter; for now the hips block IS the lower body.)
-	local hips = makePart("Hips", Vector3.new(1.8, 1.4, 1.2), Color3.fromRGB(70, 90, 160), 4)
-	hips.Parent = man
-	man.PrimaryPart = hips
+	-- The body: four cake layers.
+	local layers: { Part } = {}
+	for i = 1, LAYERS do
+		local layer = makePart("Layer" .. i, LAYER_SIZE, LAYER_COLOR[i], LAYER_DENSITY[i])
+		layer.CFrame = CFrame.new(0, (i - 1) * LAYER_STEP, 0)
+		layer.Parent = man
+		layers[i] = layer
+	end
+	man.PrimaryPart = layers[1] -- the bottom layer is the root. Forward is -Z.
 
-	-- Plate: a wide, LIGHT dinner plate perched above the hips. Light is the
-	-- point -- a heavy plate drags the body around; a light one rides the motion.
-	-- Cylinders are long on local X, so stand X up to make a disc.
-	local plate = makePart("Plate", Vector3.new(0.3, 5, 5), Color3.fromRGB(240, 240, 235), 0.4)
-	plate.Shape = Enum.PartType.Cylinder
-	plate.CFrame = hips.CFrame * CFrame.new(0, 1.6, 0) * CFrame.Angles(0, 0, math.rad(90))
-	plate.Parent = man
+	for i = 1, LAYERS - 1 do
+		local jointY = (i - 1) * LAYER_STEP + LAYER_SIZE.Y / 2 + GAP / 2
+		socket("Joint" .. i, layers[i], layers[i + 1], Vector3.new(0, jointY, 0), JOINT_ANGLE, JOINT_TWIST, BODY_FRICTION)
+	end
 
-	-- The wobble joint: a ball socket with limits tight enough that the plate
-	-- tips and recovers instead of dumping. This tension IS the game later --
-	-- the cakes ride on this plate.
-	local a0 = Instance.new("Attachment")
-	a0.Name = "NeckA0"
-	a0.Parent = hips
-	local a1 = Instance.new("Attachment")
-	a1.Name = "NeckA1"
-	a1.Parent = plate
-	-- Set socket point in WORLD space (just above the hips) so we don't have to
-	-- reason about the rotated cylinder's local axes.
-	local socketWorld = hips.CFrame * CFrame.new(0, 0.9, 0)
-	a0.WorldCFrame = socketWorld
-	a1.WorldCFrame = socketWorld
-	local neck = Instance.new("BallSocketConstraint")
-	neck.Name = "Neck"
-	neck.Attachment0 = a0
-	neck.Attachment1 = a1
-	neck.LimitsEnabled = true
-	neck.UpperAngle = 25
-	neck.TwistLimitsEnabled = true
-	neck.TwistLowerAngle = -20
-	neck.TwistUpperAngle = 20
-	neck.Parent = hips
+	-- The head: one little box on top, on the same kind of socket. It's a cherry.
+	local topY = (LAYERS - 1) * LAYER_STEP
+	local head = makePart("Head", HEAD_SIZE, Color3.fromRGB(200, 60, 70), 0.4)
+	head.CFrame = CFrame.new(0, topY + LAYER_SIZE.Y / 2 + GAP + HEAD_SIZE.Y / 2, 0)
+	head.Parent = man
+	socket("Neck", layers[LAYERS], head, Vector3.new(0, topY + LAYER_SIZE.Y / 2 + GAP / 2, 0), HEAD_ANGLE, 20, NECK_FRICTION)
 
-	-- Adjacent jointed parts grind on each other and jitter: never let them collide.
-	local nc = Instance.new("NoCollisionConstraint")
-	nc.Part0 = hips
-	nc.Part1 = plate
-	nc.Parent = hips
+	-- The arms: noodles. Same construction as the body, just thinner, floppier, and
+	-- sideways -- a chain of segments, each socketed to the last, each sprung back
+	-- toward rest. They are pure passive theatre: nothing drives them, they just get
+	-- dragged around by the body and flail, which is exactly what we want.
+	local fistSize = ARM_SIZE * FIST_SCALE
+	for _, side in { { suffix = "L", x = -1 }, { suffix = "R", x = 1 } } do
+		-- Shoulders on the TOP layer, so the noodles dangle clear of the floor.
+		-- (Hung lower, they scrape the ground and the poor man walks around
+		-- dragging his knuckles through the baseplate.)
+		local shoulderY = (LAYERS - 1) * LAYER_STEP
+		-- Hang the whole arm clear of the widest thing on it (the fist), so it can
+		-- swing past the cake instead of spawning halfway inside it.
+		local x = side.x * (LAYER_SIZE.X / 2 + fistSize.X / 2 + GAP)
+		local prev: BasePart = layers[LAYERS]
+		local jointY = shoulderY -- walks DOWN the arm, joint by joint
+
+		for seg = 1, ARM_SEGMENTS do
+			local isFist = seg == ARM_SEGMENTS
+			local size = if isFist then fistSize else ARM_SIZE
+			local arm = makePart(
+				"Arm" .. side.suffix .. seg,
+				size,
+				if isFist then Color3.fromRGB(225, 175, 140) else Color3.fromRGB(235, 200, 170),
+				if isFist then FIST_DENSITY else 0.4
+			)
+			-- Each segment hangs a gap below the joint above it.
+			local y = jointY - GAP / 2 - size.Y / 2
+			arm.CFrame = CFrame.new(x, y, 0)
+			-- Arms DO collide -- with the cake, the floor, and other players. They're
+			-- not decoration, they're flails. (They still can't hit the segment they're
+			-- jointed to: socket() adds a NoCollisionConstraint for that pair, and
+			-- without it adjacent parts grind on each other and the arm buzzes.)
+			arm.CanCollide = true
+			arm.Parent = man
+
+			socket("Arm" .. side.suffix .. "J" .. seg, prev, arm, Vector3.new(x, jointY, 0), ARM_ANGLE, 20, ARM_FRICTION)
+			prev = arm
+			jointY = y - size.Y / 2 - GAP / 2 -- next joint: below this segment
+		end
+	end
 
 	return man
 end
 
--- Locomotion actuators. The sim writes ONLY these targets:
---   Thrust.Force   (world VectorForce at the hips' center of mass)
+-- Actuators. There are only TWO in the whole character, and they're both on the base:
+--   Thrust.Force   (world VectorForce on the base, at its centre of mass)
 --   Heading.CFrame (AlignOrientation: face the drive direction, stay upright)
---   PlateBalance.Force (a little lift + damping so the plate settles instead of flailing)
+-- Nothing else is driven. Everything above the base is joints and gravity.
 local function addActuators(man: Model)
-	local hips = man.PrimaryPart :: Part
+	local base = man.PrimaryPart :: Part
 	local att = Instance.new("Attachment")
 	att.Name = "DriveAtt"
-	att.Parent = hips
+	att.Parent = base
 
 	local thrust = Instance.new("VectorForce")
 	thrust.Name = "Thrust"
@@ -89,28 +228,21 @@ local function addActuators(man: Model)
 	thrust.RelativeTo = Enum.ActuatorRelativeTo.World
 	thrust.ApplyAtCenterOfMass = true
 	thrust.Force = Vector3.zero
-	thrust.Parent = hips
+	thrust.Parent = base
 
+	-- The base is the ONE part that's actively held upright and pointed where you're
+	-- going. Everything above it is springs and sockets.
 	local align = Instance.new("AlignOrientation")
 	align.Name = "Heading"
 	align.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	align.Attachment0 = att
 	align.RigidityEnabled = false -- springy facing: it CATCHES UP, it doesn't snap
-	align.Responsiveness = 20
-	align.MaxTorque = 1e6
-	align.Parent = hips
-
-	local plate = man:FindFirstChild("Plate") :: Part
-	local patt = Instance.new("Attachment")
-	patt.Name = "PlateAtt"
-	patt.Parent = plate
-	local balance = Instance.new("VectorForce")
-	balance.Name = "PlateBalance"
-	balance.Attachment0 = patt
-	balance.RelativeTo = Enum.ActuatorRelativeTo.World
-	balance.ApplyAtCenterOfMass = true
-	balance.Force = Vector3.zero
-	balance.Parent = plate
+	-- Punchy: a fast TURN_RATE in the sim is worthless if the thing that actually
+	-- applies the rotation is a slow servo -- it just becomes the new speed limit.
+	-- Both have to be quick before he can whip around.
+	align.Responsiveness = 40
+	align.MaxTorque = 9e5
+	align.Parent = base
 end
 
 -- Input lives in InputContexts under the Player (they replicate AND roll back --
@@ -164,14 +296,22 @@ local function spawnCakeManFor(player: Player)
 	spawnIndex += 1
 	local man = buildCakeMan()
 	man.Name = name
-	man:PivotTo(CFrame.new(spawnIndex * 8, 4, 0))
+	man:PivotTo(CFrame.new(spawnIndex * 8, 3, 0))
 	man.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- never stream half a character
 	addActuators(man)
 	man.Parent = menFolder
 	-- THE line everyone forgets. With no Humanoid character, prediction has no
-	-- center without this -- your own CakeMan won't be predicted and every input
+	-- centre without this -- your own CakeMan won't be predicted and every input
 	-- feels like full round-trip latency.
 	player.ReplicationFocus = man.PrimaryPart
+
+	-- And THE line everyone forgets second. The stock camera pushes itself in
+	-- whenever something blocks its view of the subject -- and the only thing it
+	-- knows not to shove past is `Player.Character`. We never set that (we have no
+	-- Humanoid, so nothing set it for us), so the camera treated CakeMan as scenery
+	-- and rammed itself through his own cake. Setting it costs nothing and doesn't
+	-- summon a Humanoid: it just tells the camera "this pile of parts is HIM".
+	player.Character = man
 	print("[CakeServer] spawned", name)
 end
 
