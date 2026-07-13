@@ -18,6 +18,53 @@ So don't touch it. Hide it, and show the player **a copy** that lags a few milli
 behind and eases toward it. Corrections land on the truth; the copy glides through them.
 The player never sees the snap. The physics stays honest.
 
+## What gets presented? Whatever is tagged.
+
+```lua
+CollectionService:GetInstanceAddedSignal("Presented"):Connect(adopt)
+```
+
+That's the whole subscription. `Presentation.luau` knows nothing about CakeMen, cakes,
+boxes or arenas — **it knows about a tag.** The server decides what deserves presenting;
+adding a new smoothed thing later never touches the presentation layer again.
+
+It's worth being deliberate about *two* tags rather than one, because they mean
+different things and conflating them is how you end up with a tag called `Prop` that
+secretly also means "smooth me" and "predict me" and "score me":
+
+| Tag | Means |
+|---|---|
+| `Prop` | what it **is** — gameplay |
+| `Presented` | what should be **done** to it — rendering |
+
+And the rule for what to tag: **things the physics moves.** The walls are not tagged.
+They never move, so there is nothing to smooth, and you'd be paying to lerp a wall
+toward itself sixty times a second, forever.
+
+### The recursion that eats your framerate
+
+The instant I moved to tags, this appeared:
+
+```
+tagged Presented: 1459 | visual copies: 1322
+```
+
+**A clone inherits the tags of the thing it copied.** So each visual copy arrived
+already tagged `Presented`, the layer faithfully presented *it*, that copy arrived
+tagged too, and away it went. It had also inherited `Prop`, which quietly doubled the
+prop count and poisoned every system that counts props — including the prediction debug
+view from the last chapter.
+
+Strip every tag off the clone, first thing:
+
+```lua
+for _, tag in CollectionService:GetTags(copy) do
+	CollectionService:RemoveTag(copy, tag)
+end
+```
+
+A visual copy is a picture. **It participates in nothing.**
+
 ## The pipeline
 
 **Copy A** — the authoritative parts. Replicated, simulated, and locally invisible:

@@ -2,8 +2,16 @@
 -- CakeServer — spawns one authoritative CakeMan per player under Server Authority.
 local Players = game:GetService("Players")
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
+local CollectionService = game:GetService("CollectionService")
 
 Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
+
+-- Anything the physics MOVES gets tagged for the presentation layer, which hides the
+-- real part and shows a smoothed copy instead (see Presentation.luau). The server
+-- decides what deserves presenting; the client never has to know what a CakeMan is.
+-- Don't tag anchored scenery -- there's nothing to smooth, and you'd lerp a wall
+-- toward itself sixty times a second forever.
+local PRESENTED_TAG = "Presented"
 
 -- CakeMan is a walking cake: a stack of layers on loose ball sockets, with noodly
 -- arms and a little box head hung off the same joints. The BOTTOM layer is the
@@ -420,6 +428,14 @@ local function spawnCakeManFor(player: Player)
 	-- can't be predicted when he comes back -- is not a character, he's a rumour.
 	man.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	addActuators(man)
+
+	-- Every part of him is physics, so every part of him gets presented.
+	for _, p in man:GetDescendants() do
+		if p:IsA("BasePart") then
+			CollectionService:AddTag(p, PRESENTED_TAG)
+		end
+	end
+
 	man.Parent = menFolder
 	-- THE line everyone forgets. With no Humanoid character, prediction has no
 	-- centre without this -- your own CakeMan won't be predicted and every input

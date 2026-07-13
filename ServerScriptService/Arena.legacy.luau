@@ -147,7 +147,14 @@ local function box(position: Vector3, angle: number): Part
 	b.BottomSurface = Enum.SurfaceType.Smooth
 	b.CustomPhysicalProperties = PhysicalProperties.new(BOX_DENSITY, BOX_FRICTION, BOX_ELASTICITY, 1, 1)
 	b.Parent = props
+	-- TWO tags, because they mean two different things, and conflating them is how a
+	-- codebase gets a tag called "Prop" that secretly also means "smooth me" and
+	-- "predict me" and "score me":
+	--   Prop      -- what it IS. Gameplay. (The F6 prediction view uses this.)
+	--   Presented -- what should be DONE to it. Rendering.
+	-- The walls are not Presented. They never move; there is nothing to smooth.
 	CollectionService:AddTag(b, "Prop")
+	CollectionService:AddTag(b, "Presented")
 	return b
 end
 
