@@ -151,6 +151,37 @@ a CakeMan is. **Anything the physics moves can be presented this way**, and the 
 you have this layer, the temptation to "just smooth the physics a bit" disappears
 forever, which is the real prize.
 
+The `Presented` tag is **baked into the rig template and the boxes** (Chapters 2 and 5),
+not applied at spawn. So a cloned CakeMan arrives already tagged, `adopt()` fires off
+the clone, and the presentation layer never needs to know that spawning exists.
+
+## The payoff: a second consumer, for free
+
+The health bars (Chapter 8) are a `BillboardGui` per player. Where do you parent them?
+
+```lua
+local anchor = Presentation.GetSmoothed(root) or root
+```
+
+To the **smoothed copy** — never the raw physics. A health bar nailed to the truth
+inherits every correction snap the truth suffers, and a jittering name tag is far more
+noticeable than a jittering cake, because text is *supposed* to sit still.
+
+That's the whole HealthUI integration: one line, and it never mentions prediction,
+rollback or smoothing again. Which is how you know the abstraction was the right one —
+**the second thing to use it cost nothing.** If your presentation layer only ever serves
+the character it was written for, it isn't a layer, it's a hack with a good name.
+
+## The numbers
+
+| | | |
+|---|---|---|
+| `SMOOTH_TIME` | 0.06 | position. Higher = smoother, and *laggier*. |
+| `ROT_TIME` | 0.07 | rotation |
+| `LEAD` | 0.05 | velocity lead — the copy aims slightly *ahead* of the truth |
+| `SNAP_DIST` | 24 | past this, teleport. Don't smoothly fly across the map. |
+
 ---
 
-**Next:** [Chapter 8 — feel](08-feel.md). The knobs, in the order you should turn them.
+**Next:** [Chapter 8 — combat](08-combat.md). Damage is momentum, and both halves of
+that sentence are a trap.

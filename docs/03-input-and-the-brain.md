@@ -17,6 +17,9 @@ he was doing".
 
 ## Input: InputActions, not RemoteEvents
 
+Built **on the server**, in `CakeServer`, when a player joins — parented to the Player,
+so it exists on both machines and can be read from inside the simulation on either.
+
 ```lua
 local ctx = Instance.new("InputContext")
 ctx.Name = "PlayContext"
@@ -29,6 +32,15 @@ steer.Parent = ctx
 local cameraDir = Instance.new("InputAction")
 cameraDir.Type = Enum.InputActionType.Direction3D
 cameraDir.Parent = ctx
+
+-- Hold left mouse to put your guard up. The whole back half of this game hangs off
+-- one Bool. (Chapter 9.)
+local grab = Instance.new("InputAction")
+grab.Type = Enum.InputActionType.Bool
+grab.Parent = ctx
+local mouse = Instance.new("InputBinding")
+mouse.KeyCode = Enum.KeyCode.MouseLeftButton
+mouse.Parent = grab
 
 ctx.Parent = player
 ```
@@ -57,22 +69,45 @@ Worth stating plainly, because it's the first thing people reach for and it isn'
 **`BindToSimulation` hands you `dt` and nothing else.** No simulation time, no step ID,
 no frame counter.
 
-And the clocks that *do* exist are traps. `workspace:GetServerTimeNow()` and
-`DistributedGameTime` are real, and they *are* on a shared timebase across server and
-client — but they are **wall clocks, and wall clocks are not resim-safe**. The hazard is
-specific and worth understanding:
+**And `RunService:Time()` does not exist.** I mention it because it comes up constantly
+— someone will tell you it's the resim-safe clock. It isn't a member of `RunService`, in
+any Studio build, and it isn't in the API dump or the docs. The engine does internally
+revert "state and time" on a rollback, which is probably where the folklore comes from,
+but it hands you no way to read that clock.
 
-> During a rollback, your client replays several simulation frames **inside a single real
-> instant**. A wall clock returns near-identical values for all of them — while the
-> server, when it originally simulated those frames, saw genuinely different times. The
-> two machines now compute different results from the same frame. You have manufactured
-> your own misprediction.
+The clocks that *do* exist are traps. `workspace:GetServerTimeNow()` and
+`DistributedGameTime` are real, and they *are* on a shared timebase across server and
+client — but they are **wall clocks, and wall clocks are not resim-safe**.
+
+The failure mode is not the one you'd guess, and I had it wrong in an earlier draft. A
+wall clock is never *rewound* — it stays perfectly monotonic across a rollback. It just
+**stops agreeing with `dt`**. Here's a real resim burst, captured from inside
+`BindToSimulation`:
+
+```
+live   dt=0.0333  DGT=99.2167  ServerTimeNow=13.7870
+RESIM  dt=0.0333  DGT=99.2667  ServerTimeNow=13.8381
+RESIM  dt=0.0333  DGT=99.2667  ServerTimeNow=13.8398
+RESIM  dt=0.0333  DGT=99.2667  ServerTimeNow=13.8414
+RESIM  dt=0.0333  DGT=99.2667  ServerTimeNow=13.8429
+live   dt=0.0333  DGT=99.2833  ServerTimeNow=13.8537
+```
+
+Four replayed steps, each advancing physics by a full 33 ms — and `DistributedGameTime`
+**does not move at all** across them, while `GetServerTimeNow()` creeps forward by the
+1.6 ms the *replay itself* took to execute. The server, simulating those same four steps
+for real, saw its clock advance 133 ms.
+
+Same step, different reading on each machine. That **is** a misprediction, and you built
+it by hand. `dt` is the only quantity that replays identically.
 
 The pattern that works is to **accumulate `dt` into rolled-back state**:
 
 ```lua
-local t = (base:GetAttribute("SimTime") :: number?) or 0
-base:SetAttribute("SimTime", t + dt)
+-- the guard timer (Chapter 9): how long have the hands been up?
+local held = (base:GetAttribute("GuardTime") :: number?) or 0
+held = if reaching then held + dt else 0
+base:SetAttribute("GuardTime", held)
 ```
 
 Attributes written inside the sim roll back with resimulation, so a re-run restores the
@@ -80,8 +115,33 @@ previous value and re-accumulates — identical every time. **That is your simul
 clock.** The engine doesn't give you one; you build it from the only two things you have
 (`dt`, and state that rolls back).
 
-Same trick for timers: a countdown attribute decremented by `dt`. Never a timestamp
-compared against "now".
+Same trick for timers: a countdown attribute decremented by `dt` (`DownedFor`, in
+Chapter 10). Never a timestamp compared against "now".
+
+### The one thing the engine *does* give you: `IsResimulating()`
+
+Absent from the Server Authority docs page, and genuinely useful:
+
+```lua
+RunService:IsResimulating()  -- true while the current step is a REPLAY
+```
+
+(Along with `RunService.Rollback` and `RunService.Misprediction`, which fire around the
+event and carry stats.)
+
+This is the missing half of rule 4 below. "No effects in the simulation" is blanket
+advice standing in for the real rule, which is: **an effect must not fire on a replayed
+step** — that step already happened, and its sound already played. Guard on it and
+effects can live in the sim legally:
+
+```lua
+if not RunService:IsResimulating() and state == "Exploded" and lastState ~= "Exploded" then
+	emitExplosion() -- a live step, and a genuine transition
+end
+```
+
+It does **not** give you a clock. A replayed step still gets an honest `dt`, and you are
+never told *which* step you're replaying — only that you are.
 
 And the corollary, which is the one people miss: **if the thing you're timing is tied to
 movement, use distance instead of time.** A distance clock gives you
@@ -119,8 +179,12 @@ Two terms:
 
 - **Feed-forward** (`FRICTION_FF`) — a shove big enough to break the drag holding him
   still. Size it against the friction it has to beat: sliding needs roughly `µ × gravity`
-  of acceleration. At µ 0.3 that's ~59, so a feed-forward of 45 means **he sits there
-  humming and never moves**, which is a very confusing five minutes.
+  of acceleration. Back when his base was grippy (µ 0.3) that was ~59 — so a feed-forward
+  of 45 meant **he sat there humming and never moved**, which was a very confusing five
+  minutes. The shipped character glides on a base of µ **0.05**, needs about 10, and runs
+  a `FRICTION_FF` of **30**. The number is small now because the *rig* changed, not
+  because the servo did — which is the point of sizing it against a physical quantity
+  instead of tuning it by feel.
 - **The gap term** — closes toward `TARGET_SPEED`, and *goes negative above it*. That's
   what makes it a **cap and not a motor**. It cannot run away.
 
@@ -197,7 +261,25 @@ the character.
 
 One gotcha there: a fast turn rate in the sim is worthless behind a slow actuator. The
 `AlignOrientation` that actually applies the rotation was set to `Responsiveness = 12`
-and simply became the new speed limit. **Both** have to be quick.
+and simply became the new speed limit. **Both** have to be quick. (It runs at 40 now.)
+
+## Everything else the brain does
+
+By the end of the series `CakeSim` has grown three more jobs, and they're all the same
+shape — read intent, read truth, drive actuators — so they're worth listing here as a
+map of where you're going:
+
+| Job | Reads | Writes / drives | Chapter |
+|---|---|---|---|
+| **Locomotion** | `Steer`, `CameraDir` | `TargetDir`, `DriveDir`, `HopPhase` → `Thrust`, `Heading` | this one |
+| **The guard** | `Grab` | `Reaching`, `GuardTime` → `Reach.Enabled`, `ArmedL`/`ArmedR` | 9 |
+| **The limp** | `Downed` (server-written) | `Heading.Enabled`, every joint's `MaxFrictionTorque` | 10 |
+
+Notice what's *not* in that table: anything the simulation has to be told by a message,
+and anything it has to create. The brain reads attributes and flips switches. That's the
+whole shape of a Server Authority character, and if you find yourself wanting to break
+it, the thing you want almost certainly belongs on the server (Chapter 8) or in the
+render layer (Chapter 7).
 
 ---
 

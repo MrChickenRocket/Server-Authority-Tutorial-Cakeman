@@ -91,4 +91,4 @@ RunService:UnbindFromRenderStep("CakeCamera")
 
 ---
 
-**Next:** [Chapter 5 — the world](05-the-world.md). An arena, and 122 boxes to knock over.
+**Next:** [Chapter 5 — the world](05-the-world.md). Four bases, three bridges, and a hole.

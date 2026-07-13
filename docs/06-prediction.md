@@ -44,14 +44,14 @@ Don't trust that setting a mode did anything.
 
 Right. `On` forces an instance to always be predicted. But `On` isn't free — every
 forced instance joins the **resimulation set**, and the sim re-runs several times a
-frame. Force all 122 boxes on and you're re-simulating a warehouse in order to punch one
+frame. Force all 73 boxes on and you're re-simulating a warehouse in order to punch one
 box.
 
 So I wrote the clever thing: an **ad-hoc prediction bubble**. Every tick, force
 prediction `On` for props within N studs and back to `Automatic` for props beyond M
 studs, with hysteresis so boundary props don't flip every frame.
 
-It worked. I have the traces: at a 10/15-stud bubble, **5–9 of 122** props predicted, and
+It worked. I have the traces: at a 10/15-stud bubble, **5–9 of 73** props predicted, and
 the box he charged was `Predicted` at the moment of impact, caught at 4.5 studs. I even
 built a debug view (F6) that paints every prop **green** for predicted and **red** for
 not, so you can watch the bubble move with you.
