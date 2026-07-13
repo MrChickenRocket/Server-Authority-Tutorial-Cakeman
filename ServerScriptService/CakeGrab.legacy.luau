@@ -128,18 +128,27 @@ local function findTarget(man: Model, fist: BasePart): BasePart?
 			continue
 		end
 
-		-- YOU SEIZE THE BODY, NOT THE LIMB.
+		-- YOU GRAB WHAT YOU TOUCHED.
 		--
-		-- Grab whatever your fist happened to touch and you will, nine times out of ten,
-		-- catch someone's arm -- and an arm on a knocked-out cake is five loose ball
-		-- sockets of wet spaghetti. You haul on it, the noodle stretches, and the body
-		-- doesn't move an inch. It looks exactly like the grip is too weak. It isn't:
-		-- you're pulling on a rope attached to nothing.
+		-- This used to redirect any hit on a player to their PrimaryPart -- "seize the body,
+		-- not the limb" -- on the theory that grabbing an arm gets you five ball sockets of
+		-- wet spaghetti and no man on the end of it.
 		--
-		-- So when the thing you touched is a PLAYER, redirect the hold to their root.
-		-- Touch any part of a man, carry the whole man.
-		local target = if isPlayer then ((victimModel :: Model).PrimaryPart :: BasePart?) else part
-		if not target or not target:FindFirstChild("GrabAtt") then
+		-- It was a bad trade, and it broke the thing it was protecting. The grip is a spring
+		-- between YOUR FIST and the target: silently retarget that spring from the shoulder
+		-- your hand is touching to a base three studs below it, and it starts life already
+		-- stretched further than GRIP_BREAK -- so it snapped on the first frame, every time.
+		-- The only part of a man you could actually hold was the one part that happened to
+		-- be where your hand already was: the bottom slab. Nobody could grab an arm, a
+		-- shoulder, or a head, and it looked like the grip was too weak. It wasn't. It was
+		-- being asked to hold something it wasn't touching.
+		--
+		-- So: hold the thing your hand is on. Yes, an arm is a floppy handle and hauling
+		-- someone about by one is hard work -- but that's a fact about noodles, and the
+		-- player can SEE it and go for a better handhold. A rule that quietly moves the
+		-- grab somewhere else can't be seen at all.
+		local target = part
+		if not target:FindFirstChild("GrabAtt") then
 			continue
 		end
 

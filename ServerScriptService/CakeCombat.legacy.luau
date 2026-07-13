@@ -182,12 +182,6 @@ local function onContact(victimPart: BasePart, other: BasePart)
 		return
 	end
 
-	local key = tostring(other) .. ">" .. tostring(victimPart)
-	local now = os.clock()
-	if (lastHit[key] or 0) + HIT_COOLDOWN > now then
-		return
-	end
-
 	-- Pre-impact, both of them. See the note on prevVel: by the time we're called, the
 	-- solver has already spent the energy we're trying to measure.
 	local otherVel = approachVel(other)
@@ -231,14 +225,37 @@ local function onContact(victimPart: BasePart, other: BasePart)
 		end
 	end
 
-	lastHit[key] = now
-
-	-- THE CHERRY. A clean hit on the head ends the fight, whoever you are.
+	-- THE CHERRY, JUDGED FIRST AND EXEMPT FROM THE COOLDOWN.
+	--
+	-- Order matters here, and it nearly cost us the best mechanic in the game. The cooldown
+	-- below is now keyed to the VICTIM rather than the part, so a fist that clips a man's
+	-- icing on its way to his cherry would have set the cooldown on the way past and the
+	-- cherry shot -- the one contact that's supposed to be unmissable -- would have been
+	-- swallowed as a duplicate. So the head is settled on the merits of the contact itself,
+	-- before any bookkeeping gets a vote. A clean hit on the cherry ends the fight, whoever
+	-- you are, whatever else you brushed on the way in.
 	if victimPart.Name == "Head" and relSpeed >= CHERRY_KO_SPEED then
 		print(string.format("[CakeCombat] CHERRY SHOT on %s (%.0f studs/s)", victim.Name, relSpeed))
 		knockOut(victim)
 		return
 	end
+
+	-- ONE PUNCH IS ONE PUNCH.
+	--
+	-- This cooldown used to be keyed per attacker-part -> VICTIM PART. A cake is five slabs
+	-- plus two arms, so a fist sweeping through a man clipped his sponge, his strawberry
+	-- AND his icing on the way past and billed him separately for each -- one swing landing
+	-- three, four, five times over. THAT is why punches hit like a truck, far more than the
+	-- damage numbers did: they weren't hitting harder, they were hitting repeatedly. Cutting
+	-- the scale by 5x didn't fix it, it just made the multiplier harder to see.
+	--
+	-- Key the cooldown to the VICTIM, not to the piece of him you happened to clip.
+	local key = tostring(other) .. ">" .. tostring(victim)
+	local now = os.clock()
+	if (lastHit[key] or 0) + HIT_COOLDOWN > now then
+		return
+	end
+	lastHit[key] = now
 
 	local scale = if isBox then BOX_DAMAGE else FIST_DAMAGE
 	damage(victim, (relSpeed - HIT_SPEED_MIN) * scale)
