@@ -54,8 +54,8 @@ local CollectionService = game:GetService("CollectionService")
 -- in 0 ms, no warm-up), so a prop doesn't need a long run-up to be ready. It only needs
 -- to be predicted before you TOUCH it, and 8 studs is already arm's reach for a cake.
 -- Keep it tight: everything inside this bubble is paying for itself on every rollback.
-local BUBBLE_IN = 8 -- start predicting a prop once it's this close...
-local BUBBLE_OUT = 12 -- ...and stop only once it's this far. The gap is the hysteresis.
+local BUBBLE_IN = 10 -- start predicting a prop once it's this close...
+local BUBBLE_OUT = 15 -- ...and stop only once it's this far. The gap is the hysteresis.
 local BUBBLE_HZ = 15 -- how often we re-evaluate. A tight bubble MUST be checked often:
 -- at 12 studs/s he covers 8 studs in under a second, and a lazy tick would have him
 -- arriving at a box the bubble hasn't noticed yet. Small radius, fast tick.
