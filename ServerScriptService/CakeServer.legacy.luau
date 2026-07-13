@@ -51,7 +51,9 @@ local HEAD_SIZE = Vector3.new(1.2, 1.2, 1.2)
 
 -- Arms are the exception: they HANG. A hanging chain is a normal pendulum, not an
 -- inverted one -- it's stable, so it can be as floppy as we like. Hence noodles.
-local ARM_SEGMENTS = 4 -- more segments = noodlier. This is the whole trick.
+local ARM_SEGMENTS = 5 -- more segments = noodlier. This is the whole trick.
+-- Five is long enough that the fists drag on the floor, which is a feature: they
+-- scuff and trail behind him like a knuckle-dragger.
 local ARM_SIZE = Vector3.new(0.85, 0.7, 0.85) -- chunky noodles: thin ones read as
 -- twigs and vanish at any distance. Fat and floppy is the look.
 local FIST_SCALE = 1.5 -- the last segment is a FIST: a heavy blob on the end of a
@@ -175,6 +177,14 @@ local function buildCakeMan(): Model
 		layer.Parent = man
 		layers[i] = layer
 	end
+
+	-- The base GLIDES. He has no legs -- he's a cake -- so the bottom layer is the
+	-- only thing between him and the floor, and it is a heavy BOX sliding on a plane.
+	-- At normal friction it grabs: an edge catches, he stops dead mid-stride, and the
+	-- thrust piles up until he lurches free. Make the base genuinely slippery and he
+	-- flows. The FrictionWeight (the 5) makes HIS number win the argument with
+	-- whatever surface he's on, so he glides on other people's geometry too.
+	layers[1].CustomPhysicalProperties = PhysicalProperties.new(LAYER_DENSITY[1], 0.05, 0, 5, 1)
 	man.PrimaryPart = layers[1] -- the bottom layer is the root. Forward is -Z.
 
 	for i = 1, LAYERS - 1 do

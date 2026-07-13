@@ -15,10 +15,11 @@ local CakeSim = {}
 
 local TARGET_SPEED = 12 -- studs/s the servo holds (a cap, not a motor)
 local ACCEL_GAIN = 6 -- servo stiffness: higher = snappier to target. Low = heavy
-local FRICTION_FF = 115 -- feed-forward accel that breaks the base's drag on the floor.
--- Size it against the friction it has to beat: sliding needs roughly mu * gravity of
--- acceleration (0.3 * 196 = ~59 here), so anything under that and he simply sits
--- there humming. Being generous costs nothing -- the taper below stops it running away.
+local FRICTION_FF = 30 -- feed-forward accel that breaks the base's drag on the floor.
+-- Size it against the friction it has to beat: sliding needs about mu * gravity of
+-- acceleration, and his base is deliberately slippery (mu 0.05, so ~10), so this is
+-- mostly just eagerness off the line now. It was 115 back when he had a grippy base
+-- and had to tear himself free of the floor every step.
 local FF_TAPER_END = 1.3 -- FF is full at TARGET_SPEED and fades to zero at this
 -- multiple of it. Untapered it overruns the cap on smooth ground; tapered from zero
 -- it feels flat. The knee keeps the zip while the cap stays honest.
