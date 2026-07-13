@@ -31,10 +31,11 @@ local WALL_HEIGHT = 20
 local WALL_THICK = 4
 
 local BOX_SIZE = 3
-local BOX_DENSITY = 0.08 -- CARDBOARD. This is the number that makes the game funny.
--- CakeMan's base layer is density 8, so he outweighs a box ~100:1 per unit volume:
--- he ploughs through a stack and they go everywhere. Crank it to 1 and he's shoving
--- crates around a warehouse instead, which is a different (worse) game.
+local BOX_DENSITY = 0.008 -- CARDBOARD. Actually, EMPTY cardboard. This is the number
+-- that makes the game funny, and it wants to be absurd: CakeMan's base layer is
+-- density 8, so he now outweighs a box a thousand to one per unit volume. He doesn't
+-- push these. He detonates them. Crank it to 1 and he's shoving crates around a
+-- warehouse instead, which is a different (worse) game.
 local BOX_FRICTION = 0.6 -- they tumble and skid to a stop rather than sliding forever
 local BOX_ELASTICITY = 0.15 -- a little bounce; cardboard isn't a superball
 
