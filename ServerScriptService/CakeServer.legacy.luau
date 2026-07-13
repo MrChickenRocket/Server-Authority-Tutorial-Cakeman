@@ -177,7 +177,10 @@ local function buildCakeMan(): Model
 		-- Shoulders on the TOP layer, so the noodles dangle clear of the floor.
 		-- (Hung lower, they scrape the ground and the poor man walks around
 		-- dragging his knuckles through the baseplate.)
-		local shoulderY = (LAYERS - 1) * LAYER_STEP
+		-- Set high on the layer rather than through its middle: shoulders belong at
+		-- the top of a shoulder, and the higher hang gives the arms more room to
+		-- swing before the fists reach the floor.
+		local shoulderY = (LAYERS - 1) * LAYER_STEP + 0.5
 		-- Hang the whole arm clear of the widest thing on it (the fist), so it can
 		-- swing past the cake instead of spawning halfway inside it.
 		local x = side.x * (LAYER_SIZE.X / 2 + fistSize.X / 2 + GAP)
