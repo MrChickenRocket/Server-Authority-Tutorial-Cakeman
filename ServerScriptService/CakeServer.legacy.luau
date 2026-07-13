@@ -176,6 +176,22 @@ end
 -- client is holding (its presentation copies, its prediction, its camera subject), and
 -- you get a visible hitch for no reason. Move him instead, and zero his velocity so he
 -- doesn't arrive still falling.
+--
+-- AND A RESPAWN MUST RESTORE THE MAN, not just his coordinates. Moving him was only ever
+-- the visible half of it: he also arrives with whatever state he fell in, and the two
+-- states you can fall in are "nearly dead" and "unconscious". So you'd climb out of the
+-- pit still limp, still on 4 hp, with a servo that isn't holding you up -- and now that
+-- regen is a slow trickle, that's not an inconvenience, it's a death sentence. You'd spend
+-- your whole next life crawling.
+--
+-- The bug hid because the numbers used to be forgiving: fast regen papered over the
+-- un-restored health, and a 2-second knockout usually expired somewhere on the way down.
+-- Tuning didn't cause this; it just stopped concealing it. That's worth remembering --
+-- when a balance change surfaces a "new" bug, suspect that it was always there.
+--
+-- Anything a respawn doesn't explicitly clear, it silently keeps.
+local MAX_HEALTH = 100
+
 local function respawn(man: Model, index: number)
 	local point = SPAWN_POINTS[(index % #SPAWN_POINTS) + 1]
 	man:PivotTo(CFrame.new(point))
@@ -183,6 +199,26 @@ local function respawn(man: Model, index: number)
 		if p:IsA("BasePart") then
 			p.AssemblyLinearVelocity = Vector3.zero
 			p.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+
+	local root = man.PrimaryPart :: BasePart
+	root:SetAttribute("Health", MAX_HEALTH)
+	root:SetAttribute("Downed", false) -- back on your feet: the stand-up servo comes back
+	root:SetAttribute("DownedFor", 0) -- and no leftover countdown ticking against you
+	root:SetAttribute("GuardTime", 0) -- you don't arrive mid-commit to a grab you began
+	-- while falling to your death
+
+	-- Let go of whatever you were carrying. The grip is a spring between your fist and the
+	-- thing you caught; teleport the fist across the arena and that spring is suddenly
+	-- stretched the width of the map, which either drags a box after you or snaps with a
+	-- bang. CakeGrab's own tension rule would break it a frame later anyway -- but a frame
+	-- of a box being hauled across the level at grip strength is one frame too many.
+	for _, side in { "L", "R" } do
+		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
+		local grip = fist and fist:FindFirstChild("Grip") :: AlignPosition?
+		if grip then
+			(grip :: AlignPosition).Enabled = false
 		end
 	end
 end
