@@ -444,6 +444,18 @@ local menFolder = Instance.new("Folder")
 menFolder.Name = "CakeMen"
 menFolder.Parent = workspace
 
+-- One home base each, on the compass points. (Everything between the bases is a bridge
+-- over a pit, which is where the game actually happens.) Must be declared BEFORE the
+-- spawn function that reads it, or Luau captures it as a nil global instead of an
+-- upvalue and you get a very confusing "attempt to index nil" at spawn time.
+local SPAWN_POINTS = {
+	Vector3.new(0, 6, -54), -- North base
+	Vector3.new(54, 6, 0), -- East base
+	Vector3.new(0, 6, 54), -- South base
+	Vector3.new(-54, 6, 0), -- West base
+}
+local KILL_Y = -40
+
 local spawnIndex = 0
 local function spawnCakeManFor(player: Player)
 	buildInputContext(player)
@@ -456,13 +468,7 @@ local function spawnCakeManFor(player: Player)
 	man.Name = name
 	-- One corner slab each. (The corners are the safe ground; everything between them is
 	-- a bridge over a pit, which is where the game happens.)
-	local corners = {
-		Vector3.new(-45, 6, -45),
-		Vector3.new(45, 6, -45),
-		Vector3.new(-45, 6, 45),
-		Vector3.new(45, 6, 45),
-	}
-	man:PivotTo(CFrame.new(corners[((spawnIndex - 1) % 4) + 1]))
+	man:PivotTo(CFrame.new(SPAWN_POINTS[((spawnIndex - 1) % #SPAWN_POINTS) + 1]))
 	-- Persistent, not merely Atomic. Atomic promises you'll never be sent HALF a
 	-- character; Persistent promises you'll always be sent the character AT ALL. In a
 	-- game about hitting each other, an opponent who streams out at range -- and so
@@ -505,14 +511,6 @@ end
 -- client is holding (its presentation copies, its prediction, its camera subject), and
 -- you get a visible hitch for no reason. Move him instead, and zero his velocity so he
 -- doesn't arrive still falling.
-local KILL_Y = -40
-local SPAWN_POINTS = {
-	Vector3.new(-45, 6, -45),
-	Vector3.new(45, 6, -45),
-	Vector3.new(-45, 6, 45),
-	Vector3.new(45, 6, 45),
-}
-
 local function respawn(man: Model, index: number)
 	local point = SPAWN_POINTS[(index % #SPAWN_POINTS) + 1]
 	man:PivotTo(CFrame.new(point))

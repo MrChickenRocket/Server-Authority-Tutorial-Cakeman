@@ -93,33 +93,76 @@ local function block(name: string, size: Vector3, cf: CFrame, color: Color3): Pa
 	return p
 end
 
-local half = ARENA_SIZE / 2
-
--- FLOOR SLABS, laid out so the gaps between them ARE the pits. Four quadrant slabs and
--- a central cross of walkways: you can always get anywhere, but never in a straight
--- line, and the routes between are exactly wide enough to shove someone off.
-local function floorSlab(name: string, x: number, z: number, sx: number, sz: number)
-	local p = block(name, Vector3.new(sx, 2, sz), CFrame.new(x, FLOOR_Y - 1, z), FLOOR_COLOR)
-	p.Material = Enum.Material.Pebble
-	-- A red lip around every slab, so a pit edge is something you can see coming rather
-	-- than something you discover.
-	block(name .. "_LipN", Vector3.new(sx, 0.4, 1), CFrame.new(x, FLOOR_Y + 0.1, z - sz / 2 + 0.5), EDGE_COLOR)
-	block(name .. "_LipS", Vector3.new(sx, 0.4, 1), CFrame.new(x, FLOOR_Y + 0.1, z + sz / 2 - 0.5), EDGE_COLOR)
-	block(name .. "_LipE", Vector3.new(1, 0.4, sz), CFrame.new(x + sx / 2 - 0.5, FLOOR_Y + 0.1, z), EDGE_COLOR)
-	block(name .. "_LipW", Vector3.new(1, 0.4, sz), CFrame.new(x - sx / 2 + 0.5, FLOOR_Y + 0.1, z), EDGE_COLOR)
+-- A lip is PAINT, not architecture. The first version made them solid, and they were
+-- half a stud tall, and CakeMan is a legless slab that glides -- so he couldn't get over
+-- one. Every player was hard-stuck in their own base by a decorative kerb, which took an
+-- embarrassingly long time to work out because it looks exactly like "the character is
+-- broken" rather than "the floor has a fence around it".
+-- If a thing exists to be LOOKED at, it should not be able to stop anybody.
+local function lip(name: string, size: Vector3, cf: CFrame, color: Color3)
+	local p = block(name, size, cf, color)
+	p.CanCollide = false
+	p.CanTouch = false
+	p.Material = Enum.Material.SmoothPlastic
 end
 
--- four corner platforms
-floorSlab("SlabNW", -45, -45, 62, 62)
-floorSlab("SlabNE", 45, -45, 62, 62)
-floorSlab("SlabSW", -45, 45, 62, 62)
-floorSlab("SlabSE", 45, 45, 62, 62)
--- the crossroads in the middle, and the bridges to it
-floorSlab("Centre", 0, 0, 30, 30)
-floorSlab("BridgeN", 0, -45, 16, 62)
-floorSlab("BridgeS", 0, 45, 16, 62)
-floorSlab("BridgeW", -45, 0, 62, 16)
-floorSlab("BridgeE", 45, 0, 62, 16)
+local half = ARENA_SIZE / 2
+
+-- THE LAYOUT.
+--
+-- One central platform, four home bases on the compass points, and four short bridges
+-- joining them. Everything else -- the whole diagonal -- is a pit. So every base is an
+-- island, the only way in or out is a bridge, and the bridge is exactly wide enough for
+-- two cakes to have a disagreement on.
+--
+-- The mistake in the first version was making the gaps *narrow*. A 6-stud slot doesn't
+-- read as a pit, it reads as a crack in the floor, and you don't fear it. Give the void
+-- room: if a player can't see that a fall would be a long one, they won't play around
+-- it, and then the level has no shape.
+local CENTRE = 44 -- the central platform: 44 x 44, everyone's problem
+local BASE = 38 -- each home base
+local BASE_DIST = 54 -- how far out the bases sit (the gap is what's left over)
+local BRIDGE_W = 13 -- narrow. This is the interesting part of the map.
+
+-- One colour per base, so you always know whose ground you're standing on -- and, in a
+-- free-for-all, which way is home when you're upside down and on fire.
+local BASES = {
+	{ name = "North", pos = Vector3.new(0, 0, -BASE_DIST), color = Color3.fromRGB(214, 78, 84) },
+	{ name = "East", pos = Vector3.new(BASE_DIST, 0, 0), color = Color3.fromRGB(78, 138, 214) },
+	{ name = "South", pos = Vector3.new(0, 0, BASE_DIST), color = Color3.fromRGB(96, 190, 106) },
+	{ name = "West", pos = Vector3.new(-BASE_DIST, 0, 0), color = Color3.fromRGB(222, 182, 72) },
+}
+
+local function slab(name: string, size: Vector3, cf: CFrame, color: Color3, lipColor: Color3)
+	local p = block(name, size, cf, color)
+	p.Material = Enum.Material.Pebble
+	-- A lip around every edge, so a pit is something you SEE COMING rather than
+	-- something you discover.
+	local x, y, z = cf.Position.X, cf.Position.Y + size.Y / 2 + 0.05, cf.Position.Z
+	lip(name .. "_LipN", Vector3.new(size.X, 0.2, 1.2), CFrame.new(x, y, z - size.Z / 2), lipColor)
+	lip(name .. "_LipS", Vector3.new(size.X, 0.2, 1.2), CFrame.new(x, y, z + size.Z / 2), lipColor)
+	lip(name .. "_LipE", Vector3.new(1.2, 0.2, size.Z), CFrame.new(x + size.X / 2, y, z), lipColor)
+	lip(name .. "_LipW", Vector3.new(1.2, 0.2, size.Z), CFrame.new(x - size.X / 2, y, z), lipColor)
+end
+
+-- The central platform.
+slab("Centre", Vector3.new(CENTRE, 2, CENTRE), CFrame.new(0, FLOOR_Y - 1, 0), FLOOR_COLOR, EDGE_COLOR)
+
+-- The four bases, each in its own colour, and the bridge that connects it to the middle.
+-- The bridge spans the void between the centre platform's edge and the base's edge.
+for _, b in BASES do
+	slab("Base" .. b.name, Vector3.new(BASE, 2, BASE), CFrame.new(b.pos + Vector3.new(0, FLOOR_Y - 1, 0)), b.color, b.color)
+
+	local dir = b.pos.Unit -- outward from the middle
+	local innerEdge = CENTRE / 2 -- where the centre platform stops
+	local baseEdge = BASE_DIST - BASE / 2 -- where the base starts
+	local span = baseEdge - innerEdge
+	local mid = dir * (innerEdge + span / 2)
+	local size = if math.abs(dir.X) > 0.5
+		then Vector3.new(span, 1.5, BRIDGE_W)
+		else Vector3.new(BRIDGE_W, 1.5, span)
+	slab("Bridge" .. b.name, size, CFrame.new(mid + Vector3.new(0, FLOOR_Y - 0.75, 0)), RAMP_COLOR, b.color)
+end
 
 -- The outer walls. Tall, because CakeMen get launched.
 block("WallN", Vector3.new(ARENA_SIZE + WALL_THICK * 2, WALL_HEIGHT, WALL_THICK), CFrame.new(0, WALL_HEIGHT / 2, -half), WALL_COLOR)
@@ -127,18 +170,21 @@ block("WallS", Vector3.new(ARENA_SIZE + WALL_THICK * 2, WALL_HEIGHT, WALL_THICK)
 block("WallE", Vector3.new(WALL_THICK, WALL_HEIGHT, ARENA_SIZE), CFrame.new(half, WALL_HEIGHT / 2, 0), WALL_COLOR)
 block("WallW", Vector3.new(WALL_THICK, WALL_HEIGHT, ARENA_SIZE), CFrame.new(-half, WALL_HEIGHT / 2, 0), WALL_COLOR)
 
--- RAMPS up to a raised centre platform: high ground, and a great place to be shoved off.
-local RAISED_Y = 9
-block("Podium", Vector3.new(26, 2, 26), CFrame.new(0, RAISED_Y, 0), RAMP_COLOR)
-block("PodiumLipN", Vector3.new(26, 0.5, 1), CFrame.new(0, RAISED_Y + 1.2, -12.5), EDGE_COLOR)
-block("PodiumLipS", Vector3.new(26, 0.5, 1), CFrame.new(0, RAISED_Y + 1.2, 12.5), EDGE_COLOR)
-
--- A ramp is just a rotated slab. Keep them SHALLOW -- CakeMan slides on his bottom layer
--- with almost no friction (that's how he glides), so a steep ramp is a slide, not a
--- climb, and he'll never get up it.
-local RAMP_RISE = math.rad(14)
-block("RampW", Vector3.new(24, 1.5, 20), CFrame.new(-22, RAISED_Y / 2 + 0.5, 0) * CFrame.Angles(0, 0, -RAMP_RISE), RAMP_COLOR)
-block("RampE", Vector3.new(24, 1.5, 20), CFrame.new(22, RAISED_Y / 2 + 0.5, 0) * CFrame.Angles(0, 0, RAMP_RISE), RAMP_COLOR)
+-- COVER, in the middle. A few blunt walls, no ramps.
+--
+-- There WAS a raised podium with ramps up to it, and it was a lot of geometry to
+-- maintain for very little: you have to build a ramp per entrance or players from the
+-- wrong side just drive into a wall, the ramp angle is bounded by the fact that CakeMan
+-- has no friction and climbs by thrust alone, and none of it changed the fight. Walls do
+-- the same job -- break sightlines, give you something to shove people into, stop the
+-- middle being a featureless dinner plate -- and they're four lines.
+--
+-- Cut the thing that costs you geometry and gives you nothing.
+local WALL_H = 9
+block("CoverA", Vector3.new(3, WALL_H, 20), CFrame.new(-13, WALL_H / 2, -6), RAMP_COLOR)
+block("CoverB", Vector3.new(3, WALL_H, 20), CFrame.new(13, WALL_H / 2, 6), RAMP_COLOR)
+block("CoverC", Vector3.new(16, WALL_H, 3), CFrame.new(6, WALL_H / 2, -14), RAMP_COLOR)
+block("CoverD", Vector3.new(16, WALL_H, 3), CFrame.new(-6, WALL_H / 2, 14), RAMP_COLOR)
 
 -- Kill plane. Anything that falls this far is gone; CakeServer watches for it.
 local void = block("Void", Vector3.new(ARENA_SIZE * 2, 2, ARENA_SIZE * 2), CFrame.new(0, -PIT_DEPTH, 0), Color3.fromRGB(20, 20, 26))
@@ -203,18 +249,76 @@ local function pile(centre: Vector3, baseWidth: number)
 	end
 end
 
--- Piles sit ON the slabs, never over a pit.
-local PILES = {
-	{ centre = Vector3.new(-45, 0, -45), width = 3 },
-	{ centre = Vector3.new(45, 0, -45), width = 4 },
-	{ centre = Vector3.new(-45, 0, 45), width = 4 },
-	{ centre = Vector3.new(45, 0, 45), width = 3 },
-	{ centre = Vector3.new(0, 0, -45), width = 2 },
-	{ centre = Vector3.new(0, 0, 45), width = 2 },
-	{ centre = Vector3.new(0, RAISED_Y + 1, 0), width = 2 }, -- on the podium, as bait
-}
-for _, p in PILES do
-	pile(p.centre, p.width)
+-- Piles sit ON the slabs, never over a pit. Ammunition, basically: every box is a thing
+-- you can launch at somebody, and the piles are where you go to get some.
+for _, b in BASES do
+	pile(b.pos + Vector3.new(-11, 0, -11), 2) -- a small stack in each base's back corner
+	pile(b.pos + Vector3.new(11, 0, 11), 2)
+end
+pile(Vector3.new(-15, 0, 8), 3) -- and bigger heaps in the middle, tucked behind cover
+pile(Vector3.new(15, 0, -8), 3)
+pile(Vector3.new(0, 0, 0), 2) -- and one right in the centre, as bait
+
+-- ---------------------------------------------------------------------------
+-- LIMBO: what happens to a box you knock into the void.
+--
+-- Left alone, a box falls forever and Roblox eventually destroys it at
+-- FallenPartsDestroyHeight. Nothing leaks -- but the arena quietly runs out of
+-- ammunition over a match, and every destroyed box churns a visual copy in the
+-- presentation layer for nothing.
+--
+-- So we recycle them. But NOT instantly: a box that reappears the moment it falls
+-- teaches the player that the void is meaningless. Knocking someone's ammunition into
+-- the pit should COST them something, even if only a few seconds.
+--
+-- So a fallen box goes to LIMBO: parked, frozen, non-collidable and invisible, out of
+-- the world. It sits there for LIMBO_TIME, and then it's put back at its own pile,
+-- still, exactly where it was born. The prop count stays constant for the life of the
+-- server, which is a far easier thing to reason about than a world that slowly empties.
+--
+-- (This is ordinary server gameplay code, not the simulation, so it's allowed to use a
+-- wall clock. Inside BindToSimulation this would be a bug -- it would re-run during
+-- reconciliation and read a different time each pass.)
+-- ---------------------------------------------------------------------------
+local LIMBO_TIME = 6 -- seconds a box spends gone before it's restocked
+
+type Limbo = { home: CFrame, returnAt: number? }
+local boxes: { [BasePart]: Limbo } = {}
+for _, b in props:GetChildren() do
+	if b:IsA("BasePart") then
+		boxes[b :: BasePart] = { home = b.CFrame }
+	end
 end
 
-print(string.format("[Arena] built: %d parts, %d boxes", #arena:GetChildren(), #props:GetChildren()))
+game:GetService("RunService").Heartbeat:Connect(function()
+	local now = os.clock()
+	for b, state in boxes do
+		if not b.Parent then
+			continue
+		end
+		if state.returnAt then
+			-- in limbo, waiting to come back
+			if now >= state.returnAt then
+				b.CFrame = state.home
+				b.AssemblyLinearVelocity = Vector3.zero
+				b.AssemblyAngularVelocity = Vector3.zero
+				b.Anchored = false
+				b.CanCollide = true
+				b.Transparency = 0
+				state.returnAt = nil
+			end
+		elseif b.Position.Y < KILL_Y then
+			-- just fell out of the world: freeze it, hide it, start the clock
+			b.Anchored = true
+			b.CanCollide = false
+			b.Transparency = 1
+			b.AssemblyLinearVelocity = Vector3.zero
+			b.AssemblyAngularVelocity = Vector3.zero
+			b.CFrame = CFrame.new(0, KILL_Y - 60, 0)
+			state.returnAt = now + LIMBO_TIME
+		end
+	end
+end)
+
+print(string.format("[Arena] built: %d parts, %d boxes (fall past Y=%d -> %ds in limbo -> restocked)",
+	#arena:GetChildren(), #props:GetChildren(), KILL_Y, LIMBO_TIME))
