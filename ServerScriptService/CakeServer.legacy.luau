@@ -22,9 +22,16 @@ Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
 local CAKE_MESH_NAME = "Cake"
 
 local LAYERS = 4
-local LAYER_SIZE = Vector3.new(4, 1.4, 4) -- one cake layer
-local GAP = 0.25 -- air between every jointed pair. Without it, parts grind and buzz.
-local LAYER_STEP = LAYER_SIZE.Y + GAP
+-- Slab thickness and joint gap are ONE budget, not two. The layer pitch (thickness +
+-- gap) is what sets how tall he is, so to tighten the seams without growing him, every
+-- stud you add to the slab comes straight off the gap. Keep this sum constant (1.65)
+-- and you can slide the seam from "sliced cake" to "hairline" without touching anything
+-- else in the rig -- the joints, the head and the shoulders all key off the pitch.
+local LAYER_SIZE = Vector3.new(4, 1.55, 4)
+local LAYER_GAP = 0.1 -- the seam. The joints still need SOMEWHERE to move, so it can't
+-- be zero -- with no gap at all the slabs grind on each other and the stack buzzes.
+local GAP = 0.25 -- air between every OTHER jointed pair (head, arms).
+local LAYER_STEP = LAYER_SIZE.Y + LAYER_GAP -- the layer pitch: hold this at 1.65
 
 -- Density per layer, bottom to top. HEAVY AT THE BOTTOM is the entire stability
 -- plan: a bottom-heavy stack rights itself, a top-heavy one falls over. It's also
@@ -60,8 +67,10 @@ local HEAD_SIZE = Vector3.new(1.2, 1.2, 1.2)
 local ARM_SEGMENTS = 5 -- more segments = noodlier. This is the whole trick.
 -- Five is long enough that the fists drag on the floor, which is a feature: they
 -- scuff and trail behind him like a knuckle-dragger.
-local ARM_SIZE = Vector3.new(0.85, 0.7, 0.85) -- chunky noodles: thin ones read as
--- twigs and vanish at any distance. Fat and floppy is the look.
+local ARM_SIZE = Vector3.new(0.85, 0.88, 0.85) -- chunky noodles: thin ones read as
+-- twigs and vanish at any distance. Fat and floppy is the look. (Arm length is tuned
+-- against his HEIGHT -- the fists should just reach the floor -- so if you ever do
+-- change the layer pitch, the arms have to follow or he loses his knuckle-drag.)
 local FIST_SCALE = 1.5 -- the last segment is a FIST: a heavy blob on the end of a
 -- noodle. Mass at the end of a whip is what gives it something to throw around --
 -- and it's what makes a fast turn fling his arms out instead of just rotating them.
@@ -230,7 +239,7 @@ local function buildCakeMan(): Model
 	man.PrimaryPart = layers[1] -- the bottom layer is the root. Forward is -Z.
 
 	for i = 1, LAYERS - 1 do
-		local jointY = (i - 1) * LAYER_STEP + LAYER_SIZE.Y / 2 + GAP / 2
+		local jointY = (i - 1) * LAYER_STEP + LAYER_SIZE.Y / 2 + LAYER_GAP / 2
 		-- The stack chains UPWARD, so the cone opens around +Y: UpperAngle is now how
 		-- far a layer may LEAN in any direction, and twist is how far it may rotate
 		-- about its own vertical. Which is what those names should have meant all along.
