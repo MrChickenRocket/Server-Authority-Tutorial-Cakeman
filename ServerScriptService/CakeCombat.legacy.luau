@@ -46,6 +46,51 @@ local REGEN_RATE = 6 -- ...and then climb back to full at this many hp/sec
 
 local menFolder = workspace:WaitForChild("CakeMen")
 
+-- ---------------------------------------------------------------------------
+-- THE VELOCITY YOU READ IN `Touched` IS THE WRONG ONE.
+--
+-- Touched fires after the solver has already resolved the contact, so the velocity you
+-- read there is the velocity AFTER the impact -- and for a light thing hitting a heavy
+-- thing, that's nearly zero. Measured: a box hurled at a CakeMan at 50 studs/s reads
+-- 2.1 studs/s by the time Touched hands it to you. It arrived like a cannonball and
+-- reports itself as a gentle nudge.
+--
+-- Which meant thrown boxes did no damage AT ALL -- the crate that flattens you dealt less
+-- than the threshold, every time. (And it hid the real bug: the only impacts that ever
+-- registered hard were the ones where a heavy, servo-driven FIST kept its speed through
+-- the contact... including my own fist, punching a box. So the one thing box damage
+-- reliably did was knock me out for punching a crate.)
+--
+-- So keep last frame's velocity ourselves. Heartbeat runs after physics, so what we store
+-- is the velocity each part carried INTO the next step -- which is the pre-impact one.
+-- Weak keys, so destroyed boxes drop out of the table on their own.
+-- ---------------------------------------------------------------------------
+local prevVel: { [BasePart]: Vector3 } = setmetatable({}, { __mode = "k" }) :: any
+
+local function remember(part: BasePart)
+	prevVel[part] = part.AssemblyLinearVelocity
+end
+
+RunService.Heartbeat:Connect(function()
+	for _, box in CollectionService:GetTagged("Prop") do
+		if box:IsA("BasePart") then
+			remember(box)
+		end
+	end
+	for _, man in menFolder:GetChildren() do
+		for _, p in (man :: Model):GetDescendants() do
+			if p:IsA("BasePart") then
+				remember(p :: BasePart)
+			end
+		end
+	end
+end)
+
+-- The velocity a part was carrying just before it hit something.
+local function approachVel(part: BasePart): Vector3
+	return prevVel[part] or part.AssemblyLinearVelocity
+end
+
 -- Who owns a part? (Fists belong to their CakeMan; a box belongs to nobody.)
 local function ownerOf(part: BasePart): Model?
 	local m = part:FindFirstAncestorOfClass("Model")
@@ -125,10 +170,49 @@ local function onContact(victimPart: BasePart, other: BasePart)
 		return
 	end
 
-	local relSpeed = (other.AssemblyLinearVelocity - victimPart.AssemblyLinearVelocity).Magnitude
+	-- Pre-impact, both of them. See the note on prevVel: by the time we're called, the
+	-- solver has already spent the energy we're trying to measure.
+	local otherVel = approachVel(other)
+	local myVel = approachVel(victimPart)
+
+	local relSpeed = (otherVel - myVel).Magnitude
 	if relSpeed < HIT_SPEED_MIN then
 		return
 	end
+
+	-- WHO BROUGHT THE MOMENTUM?
+	--
+	-- Relative speed is the right measure for two FIGHTERS -- it's the same number whether
+	-- I swung into you or you ran onto my fist, and in a brawl those genuinely are the same
+	-- event. But a box is not a fighter. It is inert. It has no opinion. And relative speed
+	-- cannot tell "I punched a box" from "a box was thrown at my head", because those are
+	-- the same number too -- which is why punching a crate was knocking me out cold.
+	--
+	-- So for props only, ask which of us is doing the closing. Project both velocities onto
+	-- the line between us: if I'm arriving at the box faster than the box is arriving at
+	-- me, then I hit IT, and a box I hit is not allowed to hurt me. A thrown box still
+	-- lands, and a box I run into at speed still hurts -- because in both of those cases
+	-- the box really is the one closing the distance.
+	if isBox then
+		local line = victimPart.Position - other.Position
+		if line.Magnitude < 1e-3 then
+			return
+		end
+		local dir = line.Unit -- points from the box toward me
+		local boxClosing = otherVel:Dot(dir) -- box coming at me
+		local myClosing = myVel:Dot(-dir) -- me going at box
+		if boxClosing <= myClosing then
+			return -- I punched it. It didn't punch me.
+		end
+		-- And the box only hits as hard as the box is actually travelling. Its own closing
+		-- speed, not the relative speed -- otherwise a fist swung at 40 studs/s into a
+		-- gently drifting crate would still register as a 40-stud-per-second impact.
+		relSpeed = boxClosing
+		if relSpeed < HIT_SPEED_MIN then
+			return
+		end
+	end
+
 	lastHit[key] = now
 
 	-- THE CHERRY. A clean hit on the head ends the fight, whoever you are.
