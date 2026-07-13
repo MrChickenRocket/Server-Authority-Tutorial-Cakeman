@@ -92,11 +92,31 @@ end
 
 -- Ball-socket two parts together at the point BETWEEN them, and never let them
 -- collide (adjacent jointed parts grind on each other and jitter).
+-- A BallSocketConstraint's cone opens around its attachment's PRIMARY AXIS -- which
+-- is the attachment's X axis -- and its twist is measured about that same axis.
+-- An attachment built from CFrame.new(pos) has identity rotation, so its X axis
+-- points along world +X... which means if your limb chains along Y (like every limb
+-- here does), the cone is lying on its side. The joint then bends on its TWIST axis
+-- and twists on its BEND axis: your ragdoll folds in directions you never asked for
+-- and refuses to fold in the ones you did.
+--
+-- So: point the attachment's X axis DOWN THE CHAIN. `axis` is the direction the
+-- limb runs (up the cake, down an arm). Then UpperAngle really is "how far this
+-- link may bend away from straight", and twist really is twist.
+local function axisFrame(pos: Vector3, axis: Vector3): CFrame
+	local x = axis.Unit
+	-- any vector not parallel to x, to build a stable perpendicular from
+	local helper = if math.abs(x.Y) > 0.9 then Vector3.zAxis else Vector3.yAxis
+	local y = (helper - x * helper:Dot(x)).Unit
+	return CFrame.fromMatrix(pos, x, y)
+end
+
 local function socket(
 	name: string,
 	lower: BasePart,
 	upper: BasePart,
 	jointPos: Vector3,
+	axis: Vector3,
 	angle: number,
 	twist: number,
 	friction: number
@@ -105,14 +125,15 @@ local function socket(
 	-- to be positioned in, so assigning WorldCFrame early is silently thrown away --
 	-- every joint then sits at its part's origin and the whole character collapses
 	-- into itself on spawn. (Ask me how I know.)
+	local frame = axisFrame(jointPos, axis)
 	local a0 = Instance.new("Attachment")
 	a0.Name = name .. "_A0"
 	a0.Parent = lower
-	a0.WorldCFrame = CFrame.new(jointPos)
+	a0.WorldCFrame = frame
 	local a1 = Instance.new("Attachment")
 	a1.Name = name .. "_A1"
 	a1.Parent = upper
-	a1.WorldCFrame = CFrame.new(jointPos)
+	a1.WorldCFrame = frame
 
 	-- Ball sockets DON'T merge assemblies: every part stays its own body, so a force
 	-- on the base drags the rest along through the joint chain. That lag IS the wobble.
@@ -158,7 +179,10 @@ local function buildCakeMan(): Model
 
 	for i = 1, LAYERS - 1 do
 		local jointY = (i - 1) * LAYER_STEP + LAYER_SIZE.Y / 2 + GAP / 2
-		socket("Joint" .. i, layers[i], layers[i + 1], Vector3.new(0, jointY, 0), JOINT_ANGLE, JOINT_TWIST, BODY_FRICTION)
+		-- The stack chains UPWARD, so the cone opens around +Y: UpperAngle is now how
+		-- far a layer may LEAN in any direction, and twist is how far it may rotate
+		-- about its own vertical. Which is what those names should have meant all along.
+		socket("Joint" .. i, layers[i], layers[i + 1], Vector3.new(0, jointY, 0), Vector3.yAxis, JOINT_ANGLE, JOINT_TWIST, BODY_FRICTION)
 	end
 
 	-- The head: one little box on top, on the same kind of socket. It's a cherry.
@@ -166,7 +190,16 @@ local function buildCakeMan(): Model
 	local head = makePart("Head", HEAD_SIZE, Color3.fromRGB(200, 60, 70), 0.4)
 	head.CFrame = CFrame.new(0, topY + LAYER_SIZE.Y / 2 + GAP + HEAD_SIZE.Y / 2, 0)
 	head.Parent = man
-	socket("Neck", layers[LAYERS], head, Vector3.new(0, topY + LAYER_SIZE.Y / 2 + GAP / 2, 0), HEAD_ANGLE, 20, NECK_FRICTION)
+	socket(
+		"Neck",
+		layers[LAYERS],
+		head,
+		Vector3.new(0, topY + LAYER_SIZE.Y / 2 + GAP / 2, 0),
+		Vector3.yAxis, -- the head sits on top: chain runs up
+		HEAD_ANGLE,
+		20,
+		NECK_FRICTION
+	)
 
 	-- The arms: noodles. Same construction as the body, just thinner, floppier, and
 	-- sideways -- a chain of segments, each socketed to the last, each sprung back
@@ -206,7 +239,21 @@ local function buildCakeMan(): Model
 			arm.CanCollide = true
 			arm.Parent = man
 
-			socket("Arm" .. side.suffix .. "J" .. seg, prev, arm, Vector3.new(x, jointY, 0), ARM_ANGLE, 20, ARM_FRICTION)
+			-- Arms chain DOWNWARD, so the cone opens around -Y: each link may bend
+			-- ARM_ANGLE away from hanging straight down, in any direction. That's a
+			-- noodle. (With the cone left lying on its side, the arm could only really
+			-- hinge one way and twisted freely the other -- which is what you can see
+			-- happening if you look at the joint gizmo.)
+			socket(
+				"Arm" .. side.suffix .. "J" .. seg,
+				prev,
+				arm,
+				Vector3.new(x, jointY, 0),
+				-Vector3.yAxis,
+				ARM_ANGLE,
+				20,
+				ARM_FRICTION
+			)
 			prev = arm
 			jointY = y - size.Y / 2 - GAP / 2 -- next joint: below this segment
 		end
