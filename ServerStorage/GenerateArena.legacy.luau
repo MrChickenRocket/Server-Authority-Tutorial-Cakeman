@@ -1,5 +1,20 @@
 --!strict
--- Arena — builds the level (walls, ramps, death pits) and the props at boot.
+-- GenerateArena — BUILDS the level, once, as real instances in the Workspace.
+--
+-- THIS SCRIPT IS DISABLED. See ServerStorage.GenerateRig for the reasoning; the short
+-- version is that a level you can open in the explorer, select, nudge, and recolour beats
+-- a level that only exists while the server is running.
+--
+-- What it makes:
+--   workspace.Arena  -- the slabs, bridges, walls and cover. Anchored, Persistent.
+--   workspace.Props  -- the cardboard boxes. Dynamic, Persistent, tagged.
+--
+-- The boxes' RUNTIME behaviour (falling into the void, going to limbo, being restocked)
+-- is NOT here -- it lives in ServerScriptService.BoxRecycle, which is enabled and runs
+-- every game. Generation and behaviour are different jobs and belong in different files:
+-- one runs once when a designer says so, the other runs forever while people play.
+--
+-- To rebuild the level: set Disabled = false, press Play, stop, and SAVE THE PLACE.
 --
 -- WHY THIS IS A SCRIPT AND NOT PART OF THE SIM, which is the whole Server Authority
 -- lesson of this file:
@@ -259,66 +274,6 @@ pile(Vector3.new(-15, 0, 8), 3) -- and bigger heaps in the middle, tucked behind
 pile(Vector3.new(15, 0, -8), 3)
 pile(Vector3.new(0, 0, 0), 2) -- and one right in the centre, as bait
 
--- ---------------------------------------------------------------------------
--- LIMBO: what happens to a box you knock into the void.
---
--- Left alone, a box falls forever and Roblox eventually destroys it at
--- FallenPartsDestroyHeight. Nothing leaks -- but the arena quietly runs out of
--- ammunition over a match, and every destroyed box churns a visual copy in the
--- presentation layer for nothing.
---
--- So we recycle them. But NOT instantly: a box that reappears the moment it falls
--- teaches the player that the void is meaningless. Knocking someone's ammunition into
--- the pit should COST them something, even if only a few seconds.
---
--- So a fallen box goes to LIMBO: parked, frozen, non-collidable and invisible, out of
--- the world. It sits there for LIMBO_TIME, and then it's put back at its own pile,
--- still, exactly where it was born. The prop count stays constant for the life of the
--- server, which is a far easier thing to reason about than a world that slowly empties.
---
--- (This is ordinary server gameplay code, not the simulation, so it's allowed to use a
--- wall clock. Inside BindToSimulation this would be a bug -- it would re-run during
--- reconciliation and read a different time each pass.)
--- ---------------------------------------------------------------------------
-local LIMBO_TIME = 6 -- seconds a box spends gone before it's restocked
 
-type Limbo = { home: CFrame, returnAt: number? }
-local boxes: { [BasePart]: Limbo } = {}
-for _, b in props:GetChildren() do
-	if b:IsA("BasePart") then
-		boxes[b :: BasePart] = { home = b.CFrame }
-	end
-end
-
-game:GetService("RunService").Heartbeat:Connect(function()
-	local now = os.clock()
-	for b, state in boxes do
-		if not b.Parent then
-			continue
-		end
-		if state.returnAt then
-			-- in limbo, waiting to come back
-			if now >= state.returnAt then
-				b.CFrame = state.home
-				b.AssemblyLinearVelocity = Vector3.zero
-				b.AssemblyAngularVelocity = Vector3.zero
-				b.Anchored = false
-				b.CanCollide = true
-				b.Transparency = 0
-				state.returnAt = nil
-			end
-		elseif b.Position.Y < KILL_Y then
-			-- just fell out of the world: freeze it, hide it, start the clock
-			b.Anchored = true
-			b.CanCollide = false
-			b.Transparency = 1
-			b.AssemblyLinearVelocity = Vector3.zero
-			b.AssemblyAngularVelocity = Vector3.zero
-			b.CFrame = CFrame.new(0, KILL_Y - 60, 0)
-			state.returnAt = now + LIMBO_TIME
-		end
-	end
-end)
-
-print(string.format("[Arena] built: %d parts, %d boxes (fall past Y=%d -> %ds in limbo -> restocked)",
-	#arena:GetChildren(), #props:GetChildren(), KILL_Y, LIMBO_TIME))
+print(string.format("[GenerateArena] baked %d arena parts and %d boxes -- now STOP and SAVE THE PLACE",
+	#arena:GetChildren(), #props:GetChildren()))
