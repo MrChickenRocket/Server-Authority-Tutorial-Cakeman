@@ -97,6 +97,16 @@ local function onContact(victimPart: BasePart, other: BasePart)
 	if attacker == victim then
 		return -- your own fists can't hurt you, no matter how hard you try
 	end
+	-- ...and neither can the box in your own hands. The grip hauls it toward your fist at
+	-- speed, so it arrives at your face at exactly the velocity this code considers
+	-- lethal -- and a box that hits your cherry is an instant knockout. You picked up a
+	-- box and were immediately killed by it. Whatever a man is carrying is not a weapon
+	-- pointed at HIM. (CakeGrab stamps HeldBy, and keeps the stamp for a moment after you
+	-- let go, so the box you just threw isn't an enemy projectile while it's still an
+	-- inch from your nose.)
+	if isBox and other:GetAttribute("HeldBy") == victim.Name then
+		return
+	end
 	-- Only FISTS hurt. Being barged by someone's cake is a shove, not a punch.
 	if attacker and not string.match(other.Name, "^Arm[LR]5$") then
 		return

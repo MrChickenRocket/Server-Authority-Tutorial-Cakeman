@@ -59,10 +59,40 @@ local function fistsOf(man: Model): { BasePart }
 	return out
 end
 
+-- WHO IS HOLDING THIS THING? Stamped onto the target so the damage code can see it.
+--
+-- Without this you knock yourself out picking up a box. The grip yanks it toward your
+-- fist at speed, it arrives at your face, and the damage code -- which quite reasonably
+-- believes that a box travelling at you at 30 studs/s is bad news -- clocks it as a
+-- direct hit on your cherry and puts you on the floor. You are killed by your own
+-- shopping, every single time, and it looks like the physics has gone mad.
+--
+-- The GRACE is the other half of it. Clearing the stamp the instant you let go means the
+-- box you just hurled is still an inch from your face and instantly counts as an enemy
+-- projectile. Give it a moment to leave.
+local HELD_GRACE = 0.7
+
+local function stamp(target: BasePart, holder: string?)
+	target:SetAttribute("HeldBy", holder)
+end
+
 local function release(grip: AlignPosition)
+	local hold = holds[grip]
+	local target = hold and hold.target
 	grip.Enabled = false
 	grip.Attachment0 = nil
 	holds[grip] = nil
+
+	if target then
+		local t = target :: BasePart
+		local who = t:GetAttribute("HeldBy")
+		task.delay(HELD_GRACE, function()
+			-- ...unless somebody else has picked it up in the meantime.
+			if t.Parent and t:GetAttribute("HeldBy") == who then
+				stamp(t, nil)
+			end
+		end)
+	end
 end
 
 -- What can this fist grab? Anything Grabbable that isn't part of ME.
@@ -158,6 +188,7 @@ RunService.Heartbeat:Connect(function()
 					grip.Attachment0 = att
 					grip.Enabled = true
 					holds[grip] = { target = target, since = now }
+					stamp(target, man.Name) -- "this is mine, don't hit me with it"
 				end
 			end
 		end
