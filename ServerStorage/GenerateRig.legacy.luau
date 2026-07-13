@@ -134,7 +134,7 @@ local ARM_FRICTION = 8 -- the noodles: barely any, so they still flail
 -- a stance that's 6 forward and 5 down wants sqrt(6^2 + 5.2^2) = 7.9 studs of arm. The
 -- fist then strains at full extension, permanently short of where you sent it, and every
 -- grab misses by exactly the amount you overreached. THE VERTICAL DROP EATS THE REACH.
-local STANCE_DIST = 3.6 -- how far in front of the shoulders the hands are held
+local STANCE_DIST = 4.4 -- how far in front of the shoulders the hands are held
 local STANCE_WIDTH = 2.1 -- and how far apart. A grappler's guard, not a lunge.
 local STANCE_RISE = -1.1 -- a little BELOW the shoulder line, so the arm isn't spending
 -- its whole length just getting down to the floor
