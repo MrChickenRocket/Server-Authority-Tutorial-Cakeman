@@ -77,7 +77,15 @@ That round trip is input lag. Parts 2 and 3 are how it gets hidden.
 Select `Workspace`. In Properties, set **AuthorityMode** to **Server**. Do this by hand;
 it is place state, not something a script can set.
 
-`CharacterAutoLoads` goes in the server script, in Step 2.
+![Workspace properties with AuthorityMode set to Server](assets/ServerAuthorityProperty.png)
+
+Then select `Players` and untick **CharacterAutoLoads**. You are building your own
+character, so you spawn it.
+
+![Players properties with CharacterAutoLoads unticked](assets/CharacterAutoLoadsProperty.png)
+
+`CubeServer` also sets `CharacterAutoLoads = false` in code, so the assumption is visible
+in source control as well as in the place. Either alone is enough.
 
 **Check:** reopen the place. `AuthorityMode` still reads `Server`.
 

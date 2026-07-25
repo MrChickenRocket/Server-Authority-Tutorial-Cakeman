@@ -43,6 +43,12 @@ box, but a clone instead of `Instance.new()`.
 
 After that it's assorted tuning and cleanup code to get the rig exactly how we want it.
 
+![CakeMan in Studio with the joint gizmos turned on](assets/rigSetup.png)
+
+That is the whole character: four cake layers and a cherry, each its own part, with a ball
+socket at every seam. The green boxes are the parts; the gizmos on the joints are the cones
+they are allowed to move inside.
+
 **Take the rig from the sample place rather than building your own.** It is a stack of
 unanchored parts held together by ball sockets, and getting one of those right is a chapter
 in itself — two of the mistakes fail silently, with no error and no warning:
@@ -54,8 +60,9 @@ in itself — two of the mistakes fail silently, with no error and no warning:
   attachment with `CFrame.new(pos)` and X points along world +X, so a limb chaining along Y
   bends on its twist axis and twists on its bend axis.
 
-If you do build your own, turn the joint gizmos on and look at them. Both of those are
-invisible in code and obvious in a picture. The recipe that produced this rig is in
+If you do build your own, turn the joint gizmos on and look at them — as in the shot above.
+Both of those mistakes are invisible in code and obvious in a picture. The recipe that
+produced this rig is in
 [`ServerStorage/GenerateRig.legacy.luau`](../ServerStorage/GenerateRig.legacy.luau).
 
 ---
