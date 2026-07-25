@@ -44,8 +44,7 @@ types, never observations we made.
 hit the visual copy" stays, because skipping it builds something broken. The story of how we
 found that out does not.
 
-**Scope honesty lives in the repo README**, not in the chapters — one statement of what is
-unproven, once.
+**No disclaimers.** This has been run under real latency and it works. Don't hedge it.
 
 **Code in the chapters is the code in the repo.** If they disagree, the repo wins and the
 chapter is wrong. Chapter 1's blocks are verified line-for-line against `samples/cube/`.

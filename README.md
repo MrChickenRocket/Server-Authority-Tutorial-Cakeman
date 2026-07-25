@@ -71,9 +71,3 @@ ServerStorage/
 
 Script suffixes are a file-sync convention: `.luau` is a ModuleScript, `.local.luau` a
 LocalScript, `.legacy.luau` a Script.
-
-## One caveat
-
-All of this was built and driven in a running place, but not yet under real network
-latency. Single-process `Play` has no round trip for prediction to correct, so run
-**Test → Server & Clients** before taking any of it into a shipping game.
