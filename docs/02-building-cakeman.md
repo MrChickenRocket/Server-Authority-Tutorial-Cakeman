@@ -50,35 +50,7 @@ After that its assorted tuning and cleanup code to get the rig exactly how we wa
 peer drives actuators from those attributes — and obeys the same four rules. Only `drive()`
 changes.
 
-### Step 10 — Add a feed-forward term to the servo
-
-```lua
-local along = vFlat:Dot(moveDir)
-local ffScale = math.clamp(1 - (along - TARGET_SPEED) / (TARGET_SPEED * (FF_TAPER_END - 1)), 0, 1)
-thrust.Force = (moveDir * (FRICTION_FF * ffScale)
-	+ (moveDir * TARGET_SPEED - vFlat) * ACCEL_GAIN) * mass
-```
-
-The gap term is chapter 1's servo, unchanged: it closes toward `TARGET_SPEED` and goes
-negative above it, which makes it a cap rather than a motor.
-
-The new term is **feed-forward** — a shove big enough to break the drag holding him still.
-Size it against the friction it has to beat: sliding needs roughly `µ × gravity` of
-acceleration. Chapter 1's cube settles below its target for exactly this reason; this is
-the term that closes the gap.
-
-It **tapers off** past the target (`FF_TAPER_END`) so the two terms don't fight at cruise.
-Untapered, it overruns the cap on smooth ground.
-
-Then multiply by `mass` — the thrust has to haul the **entire stack**, and every layer
-above the base is dead weight it drags.
-
-**Everything is tuned in acceleration units and multiplied by mass at the last moment**, so
-the knobs keep their meaning when you change the rig.
-
-**Check:** hold W. Speed climbs to `TARGET_SPEED` and holds.
-
-### Step 11 — Add the hop, on a distance clock
+### Add the hop, on a distance clock
 
 He has no legs, so he bounces. One clock and one force:
 
@@ -112,7 +84,7 @@ The free part: the base hops, and everything above it is dragged into the air a 
 through the joints. The cake squashes on the way up and the cherry keeps going after he
 lands.
 
-### Step 12 — Split facing from movement
+###  Split facing from movement
 
 Movement uses the target direction immediately. The facing slews toward it separately:
 
@@ -121,11 +93,11 @@ base:SetAttribute("DriveDir", slewDir(cur, tdir, TURN_RATE * dt))
 ```
 
 You strafe the moment you press the key; the cake swings around afterwards. That split is
-most of what makes him feel like a heavy object rather than a turret.
+most of what makes him feel like a heavy object with flaily arms
 
 Crank `TURN_RATE` up and the arms, which obey nothing but physics, get flung out sideways.
 
-**A fast turn rate is worthless behind a slow actuator.** The `AlignOrientation` that
+**A fast turn rate doesnt work if you have a slow actuator.** The `AlignOrientation` that
 applies the rotation becomes the speed limit, so both numbers have to be quick.
 
 ---
@@ -136,7 +108,7 @@ There is no attack button and no attack animation. The arms already have mass, a
 turn already whips them out to arm's length, so a punch is a fist that arrived somewhere
 fast. The only question is how fast.
 
-### Step 13 — Put it on the server, outside the simulation
+### Put it on the server, outside the simulation
 
 `CakeSim` is the movement brain. It runs on both machines and re-runs during
 reconciliation, so it may only read input and write actuator targets.
@@ -145,7 +117,7 @@ A punch is a **consequence**: the server watches a collision and decides that on
 fist arrived at another. Movement is predicted; consequences are authoritative. That is why
 `CakePunch` is a separate server script.
 
-### Step 14 — Cache the pre-impact velocity
+### Cache the pre-impact velocity
 
 `Touched` fires *after* the solver resolved the contact, so the velocity you read there is
 what's left over — for a light thing hitting a heavy thing, nearly nothing.
@@ -174,7 +146,7 @@ end
 
 Without this, every clean hit registers as a tap.
 
-### Step 15 — Apply the shove
+### Apply the shove
 
 ```lua
 local relSpeed = (approachVel(other) - approachVel(victimPart)).Magnitude
@@ -210,13 +182,13 @@ into people.
 
 ---
 
-## The line to carry forward
+## The important bit
 
-**An attribute cannot hold a reference to an instance.** Attributes are the state that
-rolls back, so they are the only state your simulation can own.
+Punching is only calculated on the server. This causes mispredictions, but this is a case of good misprediction and is just the cost of doing business with server authority.
 
-That draws the boundary for you: "I am moving in this direction" is predicted and instant,
-while "I hit *that* man" is a fact about the world and belongs to the server. Put intent in
-the sim and consequences on the server, and prediction stops fighting you.
 
-Now go and knock something over.
+## Conclusion
+
+You now have a wobbly cake man. Expanding it further you could do the presentation any way you like - eg: pose bones of a skinned mesh where the parts are...
+
+Maybe that can be chapter 3!
