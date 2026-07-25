@@ -5,6 +5,8 @@ the cube with **CakeMan**: four cake layers stacked on ball sockets, a glacé ch
 head, and two five-segment arms ending in heavy fists. All of his animation is entirely physics,
 and he demands violence.
 
+![A CakeMan blundering around the arena, knocking boxes over](assets/02-cakeman-arena.webp)
+
 To drive him first, open [`samples/cakemanplace/`](../samples/cakemanplace/) and press
 **Test → Server & Clients**.
 

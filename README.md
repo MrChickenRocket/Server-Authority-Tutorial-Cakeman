@@ -15,15 +15,13 @@ The netcode doesn't change; only the character does.
 
 **Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
 
-<!-- HERO CLIPS -----------------------------------------------------------------
-     Drop the two MP4s into a GitHub issue comment (don't post it), copy the
-     https://github.com/user-attachments/... URL each one turns into, and paste
-     them below as bare URLs on their own line. GitHub renders those as players.
-     See docs/assets/README.md for the full procedure.
+![Two cubes driving on a baseplate, server-owned and predicted](docs/assets/01-cube-driving.webp)
 
-     Chapter 1 — the cube:
-     Chapter 2 — CakeMan:
------------------------------------------------------------------------------- -->
+*Chapter 1 — two players, two server-owned cubes, no Humanoid anywhere.*
+
+![Two CakeMen squaring up on a platform](docs/assets/02-cakeman-battle.webp)
+
+*Chapter 2 — the same four files, pointed at a stack of ball sockets.*
 
 ## Open a place and drive it
 
