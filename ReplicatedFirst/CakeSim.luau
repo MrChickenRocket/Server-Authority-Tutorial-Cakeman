@@ -1,8 +1,8 @@
 --!strict
 -- CakeSim — server-authoritative locomotion for every player's CakeMan, run
--- through BindToSimulation on BOTH sides. Deterministic only: no clocks, no
+-- through BindToSimulation on BOTH sides. Deterministic only: no wall clocks, no
 -- randomness, no instance creation, no effects (the step re-runs ~6x during
--- reconcile).
+-- reconcile). It keeps time with dt; the global time() is resim-safe too, if you need it.
 --
 -- The whole character is: drive the BOTTOM layer, and let the stack wobble.
 -- That's it. There is no balance controller, no gait, no leg logic -- the wobble
@@ -44,40 +44,12 @@ local HOP_ACCEL = 520 -- upward accel during that window. It has to beat gravity
 local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if he's
 -- already rising or falling faster than this, the hop is spent. Without this check he
 -- boosts himself in mid-air on every cycle and floats away like a balloon.
-
--- THE WRESTLER'S STANCE.
---
--- Holding the grab button doesn't fire a magnet. It puts your HANDS UP: both fists are
--- hauled to a fixed pose out in front of you -- apart, level, ready -- and they hold
--- there. Only once they've actually ARRIVED do they become live, and then they grab the
--- first thing they touch.
---
--- This is a much better mechanic than "reach out and vacuum up whatever is nearest",
--- which is what it was before. Now grabbing is something you COMMIT to: you put your
--- guard up, and then you have to walk your opponent into your hands. The pose telegraphs
--- to everyone else exactly what you're about to try, which is precisely what you want in
--- a brawler -- your intent is visible on your body, because your body IS the physics.
---
--- WHERE THE POSE ITSELF LIVES: not here. The stance is a pair of attachments (StanceL,
--- StanceR) on the shoulder layer of the rig, and the fists' Reach servo is anchored
--- between the fist and one of them. So the guard is a property of his BODY, baked into
--- the model, and this file only ever decides whether it's UP.
---
--- Which also means the force is honest. A servo that hauls a fist toward a world
--- coordinate pushes against nothing -- the momentum is conjured, the body never rocks
--- back, and the whole thing feels floaty for reasons no player can name. Anchored to the
--- shoulders with ReactionForceEnabled, throwing your hands out shoves your top cake
--- backwards by exactly as much. He pays for his own guard, out of his own posture.
-
--- THE COMMITMENT. Putting your hands up does NOT grab. For a full second you are just a
--- cake standing there with its guard up, and only then do the hands become live.
---
--- That second is the entire mechanic. It's what makes grabbing a decision rather than a
--- reflex: you must commit before you know whether it'll land, and everyone watching gets
--- a second of warning painted on your body. Take the delay away and grab becomes a
--- twitch-button that always wins; leave it in and it becomes something you can bait, dodge,
--- or punish.
-local ARM_DELAY = 1.0
+local HOP_MIN_SPEED = 4 -- the floor the clock runs at while he's DRIVING, even if he is
+-- getting nowhere. A pure distance clock stops dead the moment he's blocked -- shoved up
+-- against a wall or a cover block he'd just lean there, silent and still, looking switched
+-- off at exactly the moment the player is mashing a key. So while the intent is there he
+-- keeps bouncing. Above this speed the clock is distance again and the cadence tracks him
+-- for free, which is the property worth keeping.
 
 local UP = Vector3.new(0, 1, 0)
 
@@ -91,12 +63,6 @@ local function readCameraDir(player: Player): Vector3
 	local ctx = player:FindFirstChild("PlayContext")
 	local action = ctx and ctx:FindFirstChild("CameraDir")
 	return action and (action :: any):GetState() or Vector3.zero
-end
-
-local function readBool(player: Player, name: string): boolean
-	local ctx = player:FindFirstChild("PlayContext")
-	local action = ctx and ctx:FindFirstChild(name)
-	return action ~= nil and (action :: any):GetState() == true
 end
 
 local function totalMass(model: Model): number
@@ -144,30 +110,18 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 		end
 	end
 
-	-- Reaching is intent, so it's an attribute like any other: written by the owner,
-	-- rolled back with resimulation, read by every peer.
-	base:SetAttribute("Reaching", readBool(player, "Grab"))
-
-	-- Advance the hop clock by distance travelled. Stand still and it stops -- the clock
-	-- IS the speedometer, so he can't hop on the spot without meaning to.
+	-- Advance the hop clock by distance travelled. Let go and it stops -- the clock IS the
+	-- speedometer, so he can't hop on the spot without meaning to. But while he's DRIVING
+	-- it never drops below HOP_MIN_SPEED, so being blocked doesn't switch him off: he keeps
+	-- bouncing against whatever he's stuck on. Both terms are rolled-back state, so this
+	-- still replays identically.
 	local v = base.AssemblyLinearVelocity
 	local speed = (v - UP * v.Y).Magnitude
+	if driving then
+		speed = math.max(speed, HOP_MIN_SPEED)
+	end
 	local hop = (base:GetAttribute("HopPhase") :: number?) or 0
 	base:SetAttribute("HopPhase", (hop + speed * dt / HOP_STRIDE) % 1)
-
-	-- THE GUARD DOES NOT FOLLOW THE CAMERA. It follows HIM.
-	--
-	-- There was a block here that re-aimed his facing at the flattened camera direction
-	-- while the guard was up, so he'd square up to whatever you were looking at. It felt
-	-- clever and it was wrong: it meant your hands slid around your body every time you
-	-- moved the mouse, and the camera -- which is a way of LOOKING at the world -- had
-	-- become a way of acting on it. Turning your head is not turning your shoulders.
-	--
-	-- The camera still steers, because W is camera-relative and that's what everyone
-	-- expects. But once the intent is a direction in the world, the camera's job is done.
-	-- The hands hang off the StanceL/StanceR attachments on his top cake, so they point
-	-- wherever HE points, and to aim a grab you turn the man. That's the whole game: you
-	-- have to line your body up with your opponent, and everyone can see you doing it.
 
 	-- The FACING chases the movement at TURN_RATE. Movement itself never waits.
 	local tdir = base:GetAttribute("TargetDir") :: Vector3?
@@ -188,37 +142,8 @@ local function drive(man: Model, base: BasePart, dt: number)
 	if not thrust or not align then
 		return
 	end
-
-	-- KNOCKED OUT.
-	--
-	-- The ragdoll is not a system. There is no second rig, no animation, no "enter
-	-- ragdoll state" -- there is only this: STOP HOLDING HIM UP.
-	--
-	-- Two things hold a CakeMan together, and being knocked out takes away both:
-	--   * the `Heading` servo -- the ONE actively-oriented part in the whole character,
-	--     the thing every loose ball socket above it is hanging off. Disable it and
-	--     nothing is keeping him upright any more.
-	--   * the JOINT TONE -- MaxFrictionTorque, which is what makes his sockets doughy
-	--     rather than free. Take it to zero and open the cone limits, and the stack goes
-	--     genuinely limp: the layers slide off each other, the cherry lolls, the arms
-	--     drag. He doesn't fall over so much as give up.
-	--
-	-- Both of those are properties we already had. Being unconscious is just being
-	-- honest about the physics.
-	local downed = base:GetAttribute("Downed") == true
-	for _, d in man:GetDescendants() do
-		if d:IsA("BallSocketConstraint") then
-			local j = d :: BallSocketConstraint
-			j.MaxFrictionTorque = if downed then 0 else (j:GetAttribute("RestFriction") :: number? or 0)
-			j.UpperAngle = if downed then 75 else (j:GetAttribute("RestAngle") :: number? or 6)
-		end
-	end
-	if downed then
-		align.Enabled = false
-		thrust.Force = Vector3.zero
-		return
-	end
 	align.Enabled = true
+
 	local driving = base:GetAttribute("Driving") == true
 	local moveDir = base:GetAttribute("TargetDir") :: Vector3?
 	local faceDir = (base:GetAttribute("DriveDir") :: Vector3?) or moveDir
@@ -236,8 +161,7 @@ local function drive(man: Model, base: BasePart, dt: number)
 		-- it's a cap. Accelerations ramp; ramps hide corrections. Never snap.
 		local along = vFlat:Dot(moveDir)
 		local ffScale = math.clamp(1 - (along - TARGET_SPEED) / (TARGET_SPEED * (FF_TAPER_END - 1)), 0, 1)
-		force = (moveDir * (FRICTION_FF * ffScale)
-			+ (moveDir * TARGET_SPEED - vFlat) * ACCEL_GAIN) * mass
+		force = (moveDir * (FRICTION_FF * ffScale) + (moveDir * TARGET_SPEED - vFlat) * ACCEL_GAIN) * mass
 	else
 		force = -vFlat * (COAST_DRAG * mass) -- coast to rest, no hard brake
 	end
@@ -258,58 +182,14 @@ local function drive(man: Model, base: BasePart, dt: number)
 		align.CFrame = CFrame.lookAt(Vector3.zero, faceDir :: Vector3) -- base -Z faces travel
 	end
 
-	-- HANDS UP.
-	--
-	-- Hold the button and both fists are hauled into the wrestler's stance and held
-	-- there. A fist becomes ARMED once it has actually ARRIVED (or once you've been
-	-- holding long enough that we stop waiting for it) -- and an armed fist grabs the
-	-- first thing it TOUCHES. Not the nearest thing in a radius: the thing it touches.
-	--
-	-- All of this is PREDICTED -- it's in the sim, driven by rolled-back attributes -- so
-	-- your guard goes up the instant you click, with no round trip. Whether you then
-	-- caught anything is a question only the server can answer (see CakeGrab). Your pose
-	-- is yours; what's in your hands is a fact about the world, and facts about the world
-	-- belong to the server.
-	local reaching = base:GetAttribute("Reaching") == true
-
-	-- How long the guard has been up. Accumulated by dt into a rolled-back attribute --
-	-- which is the only kind of clock the simulation is allowed to have.
-	local held = (base:GetAttribute("GuardTime") :: number?) or 0
-	held = if reaching then held + dt else 0
-	base:SetAttribute("GuardTime", held)
-
-	for _, side in { "L", "R" } do
-		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
-		local reach = fist and fist:FindFirstChild("Reach") :: AlignPosition?
-		local grip = fist and fist:FindFirstChild("Grip") :: AlignPosition?
-		if not fist or not reach then
-			continue
-		end
-
-		-- Don't fight your own grip: once you've caught something, stop posing at it.
-		local holding = grip ~= nil and (grip :: AlignPosition).Enabled
-		local guarding = reaching and not holding
-		;(reach :: AlignPosition).Enabled = guarding
-
-		-- And that's the whole pose. THE SIMULATION NO LONGER KNOWS WHERE THE HANDS GO --
-		-- it just says whether the guard is up. Reach is anchored between the fist and a
-		-- StanceL/StanceR attachment on the shoulder layer, so the target rides the top
-		-- cake's own frame: it leans when he leans, and the shoulders stay square to the
-		-- hands without a line of CFrame maths in here. (It used to recompute a world
-		-- position every step. Every step of that was a chance for the pose and the body to
-		-- disagree, and one of them did.)
-
-		-- ARMED IS PURELY THE CLOCK. Not "has the fist arrived" -- a noodle arm on five
-		-- ball sockets arrives when it feels like it, and gating a player's input on that
-		-- means the grab fires at a different moment every time, for reasons invisible to
-		-- them. One second, every time, whatever the arms are doing. Predictable beats
-		-- physical.
-		base:SetAttribute("Armed" .. side, guarding and held >= ARM_DELAY)
-	end
-
 	-- ...and that's the entire character. Layers, head and arms are never touched by
 	-- this code otherwise: they're along for the ride, dragged through their sockets by
 	-- a base that's going somewhere. All the wobble is the physics engine's, for free.
+	--
+	-- Punching is NOT here, and that's the line worth holding: this file is the movement
+	-- brain and it re-runs during reconciliation, so it may only read input and write
+	-- actuator targets. Who hit whom is a consequence, and consequences belong to the
+	-- server. See CakePunch.
 end
 
 function CakeSim.Initialize()

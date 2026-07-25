@@ -66,6 +66,24 @@ local LAYER_STEP = LAYER_SIZE.Y + LAYER_GAP -- the layer pitch: hold this at 1.6
 -- fighting the character's own constraints: he lurches, stalls, and crawls at 3
 -- studs/s while the thrust force screams up past 14,000. Light on top, cheap joints.
 local LAYER_DENSITY = { 8, 0.5, 0.35, 0.2 }
+
+-- Width scale per layer, bottom to top. He is not a column: the two middle layers bulge
+-- so he reads as a CAKE rather than a stack of identical slabs, and the silhouette tells
+-- you which way up he is from across the arena.
+--
+-- Only X and Z scale -- the pitch is untouched, so the joints, the head and the shoulders
+-- all still key off LAYER_STEP and none of them move. The arms hang off the TOP layer,
+-- which stays at 1, so their attachment maths is unaffected too.
+--
+-- Mass follows width squared, so the bulge does add weight up high. At these densities it
+-- is nothing next to the base (upper layers total ~1.5 against the base's 8), but if you
+-- widen them much further, take some density back out or he starts to topple.
+local LAYER_WIDTH = { 1, 1.3, 1.2, 1 }
+
+-- How far to pull each shoulder back IN from the point that just clears the fist. Purely
+-- silhouette: at zero the arms hang off him like handles, and a little inset tucks them
+-- against the body without letting the fists spawn inside the cake.
+local SHOULDER_INSET = 0.5
 local LAYER_COLOR = {
 	Color3.fromRGB(120, 72, 48), -- chocolate base
 	Color3.fromRGB(240, 226, 200), -- sponge
@@ -262,8 +280,6 @@ local function socket(
 	-- Remember what "alive" feels like, so the sim can go limp and come back. Stashing
 	-- the rest values ON the constraint means the sim never has to know the rig's shape
 	-- -- it just reads what this joint's tone was supposed to be.
-	j:SetAttribute("RestAngle", angle)
-	j:SetAttribute("RestFriction", friction)
 	j.Parent = lower
 
 	local nc = Instance.new("NoCollisionConstraint")
@@ -287,7 +303,9 @@ local function buildCakeMan(): Model
 	-- The body: four cake layers.
 	local layers: { BasePart } = {}
 	for i = 1, LAYERS do
-		local layer = makeLayer("Layer" .. i, LAYER_SIZE, LAYER_COLOR[i], LAYER_DENSITY[i])
+		local w = LAYER_WIDTH[i]
+		local size = Vector3.new(LAYER_SIZE.X * w, LAYER_SIZE.Y, LAYER_SIZE.Z * w)
+		local layer = makeLayer("Layer" .. i, size, LAYER_COLOR[i], LAYER_DENSITY[i])
 		layer.CFrame = CFrame.new(0, (i - 1) * LAYER_STEP, 0)
 		layer.Parent = man
 		layers[i] = layer
@@ -383,8 +401,10 @@ local function buildCakeMan(): Model
 		-- swing before the fists reach the floor.
 		local shoulderY = (LAYERS - 1) * LAYER_STEP + 0.5
 		-- Hang the whole arm clear of the widest thing on it (the fist), so it can
-		-- swing past the cake instead of spawning halfway inside it.
-		local x = side.x * (LAYER_SIZE.X / 2 + fistSize.X / 2 + GAP)
+		-- swing past the cake instead of spawning halfway inside it -- then pull it back
+		-- in by SHOULDER_INSET, so the arms sit ON him rather than held out at arm's
+		-- length from the start. Clearing the fist is the ceiling; the inset is taste.
+		local x = side.x * (LAYER_SIZE.X * LAYER_WIDTH[LAYERS] / 2 + fistSize.X / 2 + GAP - SHOULDER_INSET)
 		local prev: BasePart = layers[LAYERS]
 		local jointY = shoulderY -- walks DOWN the arm, joint by joint
 

@@ -30,25 +30,25 @@ local rigTemplate = ServerStorage:WaitForChild("CakeManRig") :: Model
 -- with a nil Attachment does not error -- it simply applies no force, forever, in
 -- silence. This project has lost hours to that exact failure three separate times.
 --
--- So: state the contract, check it at spawn, and be loud. An assert here costs one
--- comparison per player and turns "the grab feels weak" into "Reach.Attachment1 is nil".
+-- So: state the contract, check it at spawn, and be loud. It costs one comparison per
+-- player and turns "he feels sluggish" into "Thrust.Attachment0 is nil".
 local function checkRig(man: Model)
-	for _, side in { "L", "R" } do
-		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
-		local reach = fist and fist:FindFirstChild("Reach") :: AlignPosition?
-		if not reach then
-			warn("[CakeServer] rig is missing Arm" .. side .. "5.Reach -- the guard will not go up")
-			continue
-		end
-		if reach.Attachment1 == nil then
-			warn(
-				"[CakeServer] Arm" .. side .. "5.Reach has NO Attachment1 -- the guard servo has "
-					.. "nothing to pull against and will apply zero force. Re-run ServerStorage.GenerateRig "
-					.. "and SAVE THE PLACE."
-			)
-		elseif not reach.ReactionForceEnabled then
-			warn("[CakeServer] Arm" .. side .. "5.Reach has no reaction force -- his hands are pulling against the sky")
-		end
+	local base = man:FindFirstChild("Layer1") :: BasePart?
+	local thrust = base and base:FindFirstChild("Thrust") :: VectorForce?
+	local heading = base and base:FindFirstChild("Heading") :: AlignOrientation?
+
+	if not (base and thrust and heading) then
+		warn("[CakeServer] rig is missing Layer1/Thrust/Heading -- he will not move at all")
+		return
+	end
+	if thrust.Attachment0 == nil then
+		warn(
+			"[CakeServer] Thrust has NO Attachment0 -- it will apply zero force, forever. "
+				.. "Re-run ServerStorage.GenerateRig and SAVE THE PLACE."
+		)
+	end
+	if heading.Attachment0 == nil then
+		warn("[CakeServer] Heading has NO Attachment0 -- nothing is holding him upright")
 	end
 end
 
@@ -82,23 +82,6 @@ local function buildInputContext(player: Player)
 	cameraDir.Name = "CameraDir"
 	cameraDir.Type = Enum.InputActionType.Direction3D
 	cameraDir.Parent = ctx
-
-	-- Hold left mouse to throw your fists out. Same path as everything else -- an
-	-- InputAction, so it replicates AND rolls back. (A RemoteEvent here would mean the
-	-- server and your rollback disagreed about exactly when you punched, which for a
-	-- game whose whole verb is punching is not a small problem.)
-	local grab = Instance.new("InputAction")
-	grab.Name = "Grab"
-	grab.Type = Enum.InputActionType.Bool
-	grab.Parent = ctx
-	local mouse = Instance.new("InputBinding")
-	mouse.Name = "Mouse"
-	mouse.KeyCode = Enum.KeyCode.MouseLeftButton
-	mouse.Parent = grab
-	local pad2 = Instance.new("InputBinding")
-	pad2.Name = "Gamepad"
-	pad2.KeyCode = Enum.KeyCode.ButtonR2
-	pad2.Parent = grab
 
 	ctx.Parent = player
 end
@@ -142,12 +125,6 @@ local function spawnCakeManFor(player: Player)
 	-- where the game actually happens.)
 	man:PivotTo(CFrame.new(SPAWN_POINTS[((spawnIndex - 1) % #SPAWN_POINTS) + 1]))
 
-	-- Health lives on the root as attributes, because that's where the sim can see it.
-	local root = man.PrimaryPart :: BasePart
-	root:SetAttribute("Health", 100)
-	root:SetAttribute("Downed", false)
-	root:SetAttribute("DownedFor", 0) -- counts DOWN by dt. Never a timestamp.
-
 	man.Parent = menFolder
 	-- THE line everyone forgets. With no Humanoid character, prediction has no
 	-- centre without this -- your own CakeMan won't be predicted and every input
@@ -177,21 +154,12 @@ end
 -- you get a visible hitch for no reason. Move him instead, and zero his velocity so he
 -- doesn't arrive still falling.
 --
--- AND A RESPAWN MUST RESTORE THE MAN, not just his coordinates. Moving him was only ever
--- the visible half of it: he also arrives with whatever state he fell in, and the two
--- states you can fall in are "nearly dead" and "unconscious". So you'd climb out of the
--- pit still limp, still on 4 hp, with a servo that isn't holding you up -- and now that
--- regen is a slow trickle, that's not an inconvenience, it's a death sentence. You'd spend
--- your whole next life crawling.
+-- ANYTHING A RESPAWN DOESN'T EXPLICITLY CLEAR, IT SILENTLY KEEPS.
 --
--- The bug hid because the numbers used to be forgiving: fast regen papered over the
--- un-restored health, and a 2-second knockout usually expired somewhere on the way down.
--- Tuning didn't cause this; it just stopped concealing it. That's worth remembering --
--- when a balance change surfaces a "new" bug, suspect that it was always there.
---
--- Anything a respawn doesn't explicitly clear, it silently keeps.
-local MAX_HEALTH = 100
-
+-- Right now the only state a CakeMan carries is his physics, so zeroing every velocity is
+-- the whole job -- otherwise he arrives at his base still falling at terminal velocity and
+-- immediately punches straight back through the floor. Add any state to the character
+-- later (health, a stun, whatever) and it has to be reset here too.
 local function respawn(man: Model, index: number)
 	local point = SPAWN_POINTS[(index % #SPAWN_POINTS) + 1]
 	man:PivotTo(CFrame.new(point))
@@ -201,30 +169,10 @@ local function respawn(man: Model, index: number)
 			p.AssemblyAngularVelocity = Vector3.zero
 		end
 	end
-
-	local root = man.PrimaryPart :: BasePart
-	root:SetAttribute("Health", MAX_HEALTH)
-	root:SetAttribute("Downed", false) -- back on your feet: the stand-up servo comes back
-	root:SetAttribute("DownedFor", 0) -- and no leftover countdown ticking against you
-	root:SetAttribute("GuardTime", 0) -- you don't arrive mid-commit to a grab you began
-	-- while falling to your death
-
-	-- Let go of whatever you were carrying. The grip is a spring between your fist and the
-	-- thing you caught; teleport the fist across the arena and that spring is suddenly
-	-- stretched the width of the map, which either drags a box after you or snaps with a
-	-- bang. CakeGrab's own tension rule would break it a frame later anyway -- but a frame
-	-- of a box being hauled across the level at grip strength is one frame too many.
-	for _, side in { "L", "R" } do
-		local fist = man:FindFirstChild("Arm" .. side .. "5") :: BasePart?
-		local grip = fist and fist:FindFirstChild("Grip") :: AlignPosition?
-		if grip then
-			(grip :: AlignPosition).Enabled = false
-		end
-	end
 end
 
 local fallIndex = 0
-game:GetService("RunService").Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function()
 	for _, man in menFolder:GetChildren() do
 		local root = (man :: Model).PrimaryPart
 		if root and root.Position.Y < KILL_Y then
