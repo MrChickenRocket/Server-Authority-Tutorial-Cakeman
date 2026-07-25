@@ -1,46 +1,70 @@
-# CakeMan — a server-authoritative physics character, from scratch
+# Server-authoritative physics characters in Roblox
 
-The companion repo for the CakeMan tutorial series: building a fully
-physics-driven character under Roblox **Server Authority**
-(`Workspace.AuthorityMode = Server`) from an empty baseplate. No Humanoid, no
-animation-driven movement — the ragdoll IS the character. CakeMan is a pair of
-legs carrying a large dinner plate; each round, cakes get stacked on the plate
-and your job is to keep them there.
+A two-chapter article on building a custom physics character under Roblox **Server
+Authority** (`Workspace.AuthorityMode = Server`) from an empty baseplate. No Humanoid, no
+animation-driven movement.
 
-## Layout
+**[Chapter 1 — the method, built on a sliding cube](docs/01-the-method.md)**
+The three-part method end to end: a server-owned character, client prediction, and a
+presentation layer. Four files, about 200 lines, runnable. Start here.
 
-Scripts sync into the place via ScriptSync. Naming conventions:
+**[Chapter 2 — the cake with noodle arms](docs/02-building-cakeman.md)**
+The same four files, with the cube replaced by a floppy cake on ball sockets. The netcode
+doesn't change; only the character does.
 
-| Suffix | Class |
-|---|---|
-| `.luau` | ModuleScript |
-| `.local.luau` | LocalScript |
-| `.legacy.luau` | Script |
+**Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
+
+## The sample
+
+[`samples/cube/`](samples/cube/) — the finished Chapter 1 scripts, verified in a running
+place. Drop them into a baseplate at these paths:
+
+| File | Goes to | Class |
+|---|---|---|
+| `CubeSim.luau` | `ReplicatedFirst` | ModuleScript |
+| `CubePresent.luau` | `ReplicatedFirst` | ModuleScript |
+| `CubeClient.local.luau` | `ReplicatedFirst` | LocalScript |
+| `CubeServer.legacy.luau` | `ServerScriptService` | Script |
+
+Then set `Workspace.AuthorityMode = Server` by hand in the Properties panel. That one is
+place state and cannot be scripted — a script that tries gets `lacking capability
+RobloxScript`.
+
+`samples/cube.rbxm` is the same thing as a drag-and-drop model.
+
+## Repo layout
 
 ```
-ReplicatedFirst/
-├── CakeSim.luau           -- the shared brain: runs on BOTH server and client
-├── Smoothing.luau         -- analytic SmoothDamp helper
-└── CakeClient.local.luau  -- prediction bootstrap, camera, CameraDir feed
+docs/                    the article
+  assets/                screenshots, named for the chapter that uses them
+samples/
+  cube/                  Chapter 1, as loose scripts
+  cube.rbxm              Chapter 1, as a model file
+  repro/                 four-cube minimal repro: anchored parts are not predicted
+ReplicatedFirst/         the CakeMan source that Chapter 2 draws on
 ServerScriptService/
-└── CakeServer.legacy.luau -- rig factory, actuators, input contexts, spawning
+ServerStorage/
 ```
 
-## Place settings (manual, not in this repo)
+Script suffixes are a file-sync convention: `.luau` is a ModuleScript, `.local.luau` a
+LocalScript, `.legacy.luau` a Script.
 
-- `Workspace.AuthorityMode = Server` — must be set in Studio's Properties panel.
-- `Players.CharacterAutoLoads = false` — set in Studio AND in `CakeServer` so
-  the assumption is visible in source control.
-- Test with **Test → Server & Clients**, never single-process Play, when
-  judging anything network-related.
+## Verified
 
-## Status
+Chapter 1's cube was built and driven in a live Studio session with
+`AuthorityMode = Server`: spawn, InputActions, shared sim on both machines, camera-relative
+steering, and the smoothed presentation copy with `CanQuery = false`. Holding W for 1.5 s
+moved it 35.2 studs — **23.5 studs/s** against a `SPEED` of 24.
 
-Checkpoint 1 (spawn → input → shared sim → camera-relative driving) verified
-in-place. Legs, the presentation layer, and the cake round are in progress.
+Smoothness was measured rather than eyeballed. At the default `Enum.StepFrequency.Hz30` the
+visible copy's speed swung 8.5–37.2 studs/s — **27%** wobble around its own mean. At `Hz60`
+with a continuous lead velocity: 23.3–24.5 studs/s, **1.1%**.
 
-## Starting your own SA game
+The character part is **unanchored**, and that is not cosmetic. An anchored part is excluded
+from client prediction entirely — the owning client reports itself `Authoritative` for its
+own server-owned character, and nothing is ever rolled back. `samples/repro/` isolates the
+variable across four cubes and is written up as a bug report.
 
-This repo ships a Claude Code skill: run `/make_sauth_game` in a Claude Code
-session opened at this repo to scaffold a new server-authoritative physics
-character game using these files as verified templates.
+Not yet verified: the **Server & Clients latency pass**. Single-process Play looks falsely
+jittery under Server Authority and cannot show reconcile quality, remote-character
+readability, or player-vs-player mispredicts. Both chapters say so where it matters.

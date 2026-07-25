@@ -1,0 +1,19 @@
+# Roblox Studio
+*.rbxlx.lock
+*.rbxl.lock
+*.rbxlx.bak
+*.rbxl.bak
+
+# Studio / plugin scratch
+.rbxts/
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
