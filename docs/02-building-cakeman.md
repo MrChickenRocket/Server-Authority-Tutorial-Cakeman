@@ -2,11 +2,13 @@
 
 Chapter 1 built a cube that is server-owned, predicted and smooth. This chapter replaces
 the cube with **CakeMan**: four cake layers stacked on ball sockets, a glacé cherry for a
-head, and two five-segment arms ending in heavy fists. He is entirely physics. Nothing
-about him is animated.
+head, and two five-segment arms ending in heavy fists. All of his animation is entirely physics, 
+and he demands violence.
 
 To drive him first, open [`samples/cakemanplace/`](../samples/cakemanplace/) and press
 **Test → Server & Clients**.
+
+Pay special note to spinning him to flail his arms around and knocking some boxes over. Server authority means everyone is seeing the same thing you are, and it will all interact exactly as you'd hope it would.
 
 ## What changes, and what doesn't
 
