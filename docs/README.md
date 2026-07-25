@@ -1,32 +1,50 @@
-# CakeMan — the tutorial
+# The article
 
-Draft chapters. One file each, plain markdown, meant to be edited.
+| # | File | What it covers |
+|---|---|---|
+| 1 | [01-the-method.md](01-the-method.md) | The three-part method, built end to end on a sliding cube: server character, client prediction, presentation layer. Four files, ~200 lines, runnable. |
+| 2 | [02-building-cakeman.md](02-building-cakeman.md) | The same four files, with the cube replaced by a floppy cake on ball sockets with noodle arms. |
 
-| # | File | Status | What it teaches |
-|---|---|---|---|
-| 0 | [00-orientation.md](00-orientation.md) | draft | What we're building, and why the ragdoll IS the character |
-| 1 | [01-place-zero.md](01-place-zero.md) | draft | AuthorityMode, no Humanoids, and the two lines everyone forgets |
-| 2 | [02-the-rig.md](02-the-rig.md) | draft | A cake of ball sockets — as a baked artefact, not boot code |
-| 3 | [03-input-and-the-brain.md](03-input-and-the-brain.md) | draft | InputActions, the shared sim, the four rules, the velocity servo |
-| 4 | [04-camera.md](04-camera.md) | draft | You own the camera now. SA took PlayerModule away. |
-| 5 | [05-the-world.md](05-the-world.md) | draft | An arena of bases, bridges and death pits — and where instances may be created |
-| 6 | [06-prediction.md](06-prediction.md) | draft | The chapter I got wrong twice. Prediction is not yours to micromanage. |
-| 7 | [07-presentation.md](07-presentation.md) | draft | Smooth a copy, never the physics. And the CanQuery footgun. |
-| 8 | [08-combat.md](08-combat.md) | draft | Damage is momentum — and the velocity in `Touched` is the wrong one |
-| 9 | [09-the-grab.md](09-the-grab.md) | draft | The wrestler's guard, reaction forces, and tension you can't read |
-| 10 | [10-knockout-and-respawn.md](10-knockout-and-respawn.md) | draft | Ragdoll by subtraction, and what a respawn silently keeps |
-| 11 | [11-feel.md](11-feel.md) | draft | The knobs, in the order you should turn them |
-| 12 | [12-going-further.md](12-going-further.md) | draft | Legs, and everything I tore out to get here |
+Start at the [repository README](../README.md) if you're new here.
 
-## House style for these drafts
+`assets/` — screenshots, captured from the running place and named for the chapter and step
+that uses them. See [assets/README.md](assets/README.md) for the shot list.
 
-- Every claim is something we actually measured in the place. If a number is in
-  the text, it came out of a trace, not out of the air.
-- Failures stay in. The bugs are the tutorial — a chapter where everything works
-  first time teaches nobody anything.
-- Code in the chapters is the code in the repo. If they disagree, the repo wins
-  and the chapter is wrong.
+---
 
-## Screenshots
+## House style
 
-`assets/` — captured from the running place. Named for the chapter that uses them.
+Working notes for anyone editing these two files.
+
+**Voice.** Plain instructor, second person, present tense. No byline, no war stories as
+structure. Author experience appears as a stated measurement or a named hazard, never as an
+anecdote carrying the paragraph. Competence throughout — the audience includes people
+evaluating the work, so every passage has to read as expert. Friendly is fine; flailing is
+not.
+
+**Structure.** Numbered steps, continuous across the chapter. Each step says what to do,
+then why, then a **Check:** the reader can actually run. Insight comes after the step, not
+instead of it.
+
+**Traps stay in** — they're the useful part — but each one lives at the step where it bites,
+framed as a hazard a good engineer learns to spot and diagnose.
+
+**Avoid the "X isn't A, it's B" construction.** State what a thing is. If naming the wrong
+option carries real instructional load (a mistake readers actually make), say so plainly as
+an instruction.
+
+**No options, no futuring.** Nothing about what you *could* build next, and no alternative
+approaches presented side by side. Pick the one that works and teach that.
+
+**Every claim is something measured in the place.** If a number is in the text, it came out
+of a trace. Where something is unproven, say so.
+
+**Code in the chapters is the code in the repo.** If they disagree, the repo wins and the
+chapter is wrong. Chapter 1's blocks are verified line-for-line against `samples/cube/`.
+
+## Retired drafts
+
+An earlier 15-chapter version covered the full brawler — combat, the grab, the knockout,
+arena design, tuning. It was retired when the scope became a two-chapter article. The
+originals are in commit `62fba56` under their pre-renumber filenames
+(`docs/01-place-zero.md`, `docs/02-the-rig.md`, and so on).
