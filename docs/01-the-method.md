@@ -44,7 +44,11 @@ ServerScriptService/
 The suffixes are a file-sync convention: `.luau` is a ModuleScript, `.local.luau` a
 LocalScript, `.legacy.luau` a Script. In Studio they're just the instance class.
 
-Start from an empty baseplate. The finished sample is in
+Start from an empty baseplate and build it up as you read.
+
+If you'd rather drive the finished thing first, open
+[`samples/chapter1place/`](../samples/chapter1place/) in Studio and press
+**Test → Server & Clients**. The loose scripts are in
 [`samples/cube/`](../samples/cube/).
 
 ---

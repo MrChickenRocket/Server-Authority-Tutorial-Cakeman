@@ -21,6 +21,13 @@ There is no error, no warning, and no observable difference in single-process `P
 
 ## Repro
 
+The quickest route is to open [`../chapter1place/`](../chapter1place/), which already has
+these three scripts in it (disabled, alongside the chapter 1 cube). Enable `ReproServer` and
+`ReproClient`, disable `CubeServer` and `CubeClient` so the two don't fight over
+`player.Character`, and press Play.
+
+To build it from scratch instead:
+
 1. New baseplate. Set `Workspace.AuthorityMode = Server`.
 2. Drop in the three scripts from this folder:
 

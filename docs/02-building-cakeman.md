@@ -23,6 +23,10 @@ Parts 1, 2 and 3 of the method are done; everything below is character work.
 One file is genuinely new, and it arrives at the very end: `CakePunch`, which is what makes
 two of them worth putting in a room together.
 
+The finished character, the arena and the punching are in
+[`samples/cakemanplace/`](../samples/cakemanplace/) — open it in Studio and press
+**Test → Server & Clients** if you want to drive him before you build him.
+
 ## The thesis: the ragdoll is the character
 
 There is a tempting way to build a character like this: simulate a tidy invisible capsule,

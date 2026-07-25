@@ -14,10 +14,22 @@ doesn't change; only the character does.
 
 **Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
 
-## The sample
+## Open a place and drive it
 
-[`samples/cube/`](samples/cube/) — the finished Chapter 1 scripts, verified in a running
-place. Drop them into a baseplate at these paths:
+| Place | What's in it |
+|---|---|
+| [`samples/chapter1place/`](samples/chapter1place/) | Chapter 1 finished: the driveable cube, predicted and smoothed |
+| [`samples/cakemanplace/`](samples/cakemanplace/) | Chapter 2 finished: CakeMan, the arena, and punching |
+
+Download the `.rbxl`, open it in Studio, and press **Test → Server & Clients**. Both places
+already have `Workspace.AuthorityMode = Server` set.
+
+WASD drives. In the CakeMan place, walk into someone and swing — the arms do the rest.
+
+## The scripts on their own
+
+[`samples/cube/`](samples/cube/) — the finished Chapter 1 scripts, if you'd rather build up
+from an empty baseplate than read a finished place. Drop them in at these paths:
 
 | File | Goes to | Class |
 |---|---|---|
@@ -36,10 +48,11 @@ RobloxScript`.
 
 ```
 docs/                    the article
-  assets/                screenshots, named for the chapter that uses them
+  assets/                screenshots and clips, named for the step that uses them
 samples/
-  cube/                  Chapter 1, as loose scripts
-  cube.rbxm              Chapter 1, as a model file
+  chapter1place/         Chapter 1 finished, as a place file
+  cakemanplace/          Chapter 2 finished, as a place file
+  cube/                  Chapter 1's four scripts on their own
   repro/                 four-cube minimal repro: anchored parts are not predicted
 ReplicatedFirst/         the CakeMan source that Chapter 2 draws on
 ServerScriptService/
