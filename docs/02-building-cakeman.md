@@ -2,7 +2,7 @@
 
 Chapter 1 built a cube that is server-owned, predicted and smooth. This chapter replaces
 the cube with **CakeMan**: four cake layers stacked on ball sockets, a glacé cherry for a
-head, and two five-segment arms ending in heavy fists. All of his animation is entirely physics, 
+head, and two five-segment arms ending in heavy fists. All of his animation is entirely physics,
 and he demands violence.
 
 To drive him first, open [`samples/cakemanplace/`](../samples/cakemanplace/) and press
@@ -17,7 +17,7 @@ Pay special note to spinning him to flail his arms around and knocking some boxe
 | `CubePresent` → `Presentation` | **Nothing.** It presents anything tagged `Presented`. A cake is 15 tagged parts instead of 1. |
 | `CubeClient` → `CakeClient` | **Nothing structural.** Same camera, same `CameraDir` feed. |
 | `CubeServer` → `CakeServer` | Spawns by **cloning a rig** instead of building a Part. |
-| `CubeSim` → `CakeSim` | Same velocity servo. It gains a feed-forward term, a hop, and has to haul a whole stack. |
+| `CubeSim` → `CakeSim` | Same velocity servo, now hauling a whole stack. It gains a hop and a slewed facing. |
 
 The cube already handed a force to the solver every step, so this chapter changes no
 technique — it changes the body the technique is pointed at. One file is genuinely new, and
@@ -29,18 +29,34 @@ There is a tempting way to build a character like this: simulate a tidy invisibl
 then hang a wobbly puppet off it for show. The result *looks* physical and isn't. It can't
 be knocked over, its arms can't catch on anything, and every collision has to be faked.
 
-Server Authority let's us do the opposite: Just use the raw physics engine and server authority and let the solver work it out.
+Server Authority lets us do the opposite: Just use the raw physics engine and server authority and let the solver work it out.
 
-Our cake man is quite literally just a stack of unanchored parts with ball sockets holding it all together and some vector forces to make him move about. 
+Our cake man is quite literally just a stack of unanchored parts with ball sockets holding it all together and some vector forces to make him move about.
 
 ---
 
 ## Part 1 — build the rig
 
-The rig is a real Model saved in the place: `ServerStorage.CakeManRig`. 
-Spawning the cakeman character in is just a matter of cloning him on the server. Similar to last chapers box, but it's a clone vs Instance.new()
+The rig is a real Model saved in the place: `ServerStorage.CakeManRig`. Spawning the
+CakeMan character in is just a matter of cloning him on the server — same as last chapter's
+box, but a clone instead of `Instance.new()`.
 
-After that its assorted tuning and cleanup code to get the rig exactly how we want it.
+After that it's assorted tuning and cleanup code to get the rig exactly how we want it.
+
+**Take the rig from the sample place rather than building your own.** It is a stack of
+unanchored parts held together by ball sockets, and getting one of those right is a chapter
+in itself — two of the mistakes fail silently, with no error and no warning:
+
+- An `Attachment` must be **parented before you position it**, or `WorldCFrame` is
+  discarded, every joint lands at its part's origin, and the character collapses into a
+  heap the moment it spawns.
+- A `BallSocketConstraint` measures its cone around the attachment's **X axis**. Build the
+  attachment with `CFrame.new(pos)` and X points along world +X, so a limb chaining along Y
+  bends on its twist axis and twists on its bend axis.
+
+If you do build your own, turn the joint gizmos on and look at them. Both of those are
+invisible in code and obvious in a picture. The recipe that produced this rig is in
+[`ServerStorage/GenerateRig.legacy.luau`](../ServerStorage/GenerateRig.legacy.luau).
 
 ---
 
@@ -93,11 +109,11 @@ base:SetAttribute("DriveDir", slewDir(cur, tdir, TURN_RATE * dt))
 ```
 
 You strafe the moment you press the key; the cake swings around afterwards. That split is
-most of what makes him feel like a heavy object with flaily arms
+most of what makes him feel like a heavy object with flaily arms.
 
 Crank `TURN_RATE` up and the arms, which obey nothing but physics, get flung out sideways.
 
-**A fast turn rate doesnt work if you have a slow actuator.** The `AlignOrientation` that
+**A fast turn rate doesn't work if you have a slow actuator.** The `AlignOrientation` that
 applies the rotation becomes the speed limit, so both numbers have to be quick.
 
 ---

@@ -53,17 +53,27 @@ local function adopt(truth: BasePart)
 
 	local copy = truth:Clone()
 
-	-- STRIP THE TAGS FIRST, and this is not optional: a clone inherits the tags of the
-	-- thing it copied. The copy would arrive already tagged "Presented", we would present
-	-- IT, that copy would arrive tagged too, and the layer eats itself.
+	-- A VISUAL COPY IS STILL A PART, AND A CLONE INHERITS EVERYTHING.
+	--
+	-- Left alone it will collide, answer raycasts, fire Touched, take part in fluid
+	-- forces, occlude audio, and carry every tag and attribute the original had. All of
+	-- that is invisible to you and visible to your game. Neutralise the lot.
+	--
+	-- The tags matter most: the copy would arrive already tagged "Presented", we would
+	-- present IT, that copy would arrive tagged too, and the layer eats itself.
 	for _, tag in CollectionService:GetTags(copy) do
 		CollectionService:RemoveTag(copy, tag)
+	end
+	for name in copy:GetAttributes() do
+		copy:SetAttribute(name, nil)
 	end
 
 	copy.Anchored = true
 	copy.CanCollide = false
-	copy.CanQuery = false -- READ THE NOTE. Client-only parts default to TRUE.
+	copy.CanQuery = false -- raycasts. See the note below -- this one is the expensive miss.
 	copy.CanTouch = false
+	copy.AudioCanCollide = false
+	copy.EnableFluidForces = false
 	copy.Massless = true
 	copy.CFrame = truth.CFrame
 	copy.Name = truth.Name .. "_Visual"

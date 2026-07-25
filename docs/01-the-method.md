@@ -609,17 +609,27 @@ local function adopt(truth: BasePart)
 
 	local copy = truth:Clone()
 
-	-- STRIP THE TAGS FIRST, and this is not optional: a clone inherits the tags of the
-	-- thing it copied. The copy would arrive already tagged "Presented", we would present
-	-- IT, that copy would arrive tagged too, and the layer eats itself.
+	-- A VISUAL COPY IS STILL A PART, AND A CLONE INHERITS EVERYTHING.
+	--
+	-- Left alone it will collide, answer raycasts, fire Touched, take part in fluid
+	-- forces, occlude audio, and carry every tag and attribute the original had. All of
+	-- that is invisible to you and visible to your game. Neutralise the lot.
+	--
+	-- The tags matter most: the copy would arrive already tagged "Presented", we would
+	-- present IT, that copy would arrive tagged too, and the layer eats itself.
 	for _, tag in CollectionService:GetTags(copy) do
 		CollectionService:RemoveTag(copy, tag)
+	end
+	for name in copy:GetAttributes() do
+		copy:SetAttribute(name, nil)
 	end
 
 	copy.Anchored = true
 	copy.CanCollide = false
-	copy.CanQuery = false -- READ THE NOTE. Client-only parts default to TRUE.
+	copy.CanQuery = false -- raycasts. See the note below -- this one is the expensive miss.
 	copy.CanTouch = false
+	copy.AudioCanCollide = false
+	copy.EnableFluidForces = false
 	copy.Massless = true
 	copy.CFrame = truth.CFrame
 	copy.Name = truth.Name .. "_Visual"
@@ -707,12 +717,32 @@ Three details in the render step are load-bearing: the **velocity lead**, so smo
 doesn't leave moving objects trailing; the **snap distance**, so a teleport isn't smoothed
 across the map; and the **clamped `dt`**, so one hitched frame doesn't fling the copy away.
 
-### Step 7 — Set `CanQuery = false` (and friends) on every visual copy
+### Step 7 — Hide your presentation parts from the rest of the game
 
-**Client-only parts default to `CanQuery = true`, `CanCollide = true`, etc.** Your anchored visual copy is therefore
-visible to your own raycasts and other simulation work. You want to clean that up.
+**Your visual copy is still a Part**, and it arrived as a clone, so it inherited
+everything. A part is a loud object in Roblox: by default it collides, answers raycasts,
+fires `Touched`, occludes audio, takes part in fluid forces, and carries every tag and
+attribute the original had.
 
-Every clone gets `CanQuery = false`, `CanTouch = false`, `CanCollide = false`.
+None of that is visible to you. All of it is visible to your game. So blast it flat:
+
+```lua
+copy.CanCollide = false
+copy.CanQuery = false
+copy.CanTouch = false
+copy.AudioCanCollide = false
+copy.EnableFluidForces = false
+copy.Massless = true
+-- ...and strip every tag and attribute it inherited
+```
+
+`CanQuery` is the one that actually costs you. Your anchored copy is visible to your own
+raycasts on the client only — geometry the server does not have — so your client starts
+simulating a world the server disagrees with, which is a misprediction you built by hand.
+
+The general habit is worth more than the list: **presentation parts are parts, so hide them
+from your datamodel as thoroughly as you can.** Park them in their own folder, strip what
+they inherited, and turn off every system they have no business being in.
 
 **Check:** raycast down from your cube with the default filter. It hits the floor, not a
 visual copy.
@@ -738,7 +768,7 @@ lerp a wall toward itself sixty times a second.
 ## What you have now
 
 A cube that is server-owned, uncheatable, instantly responsive, and smooth — in four files
-and about 200 lines. You can check the .rbxl in the /samples/Chapter1place/ folder
+and about 200 lines. You can drive the finished place from [`samples/chapter1place/`](../samples/chapter1place/).
 
 | | |
 |---|---|
