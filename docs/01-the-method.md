@@ -4,8 +4,8 @@ Server Authority moves character movement onto the server. The client no longer 
 moves its character. It sends inputs; the server simulates; the result replicates back.
 
 Two things follow: movement anticheat becomes secure by design. And designs where multiple
-people interact with the same physics become something you can build a game out of,
-because the server is simulating it for real and every client agrees on the result.
+people interact with the same physics become something you can build a game out of, because
+the server is simulating it for real and every client agrees on the result.
 
 ## The three parts
 
@@ -13,19 +13,12 @@ because the server is simulating it for real and every client agrees on the resu
 2. **Client prediction.** Hides the input lag.
 3. **A presentation layer.** Hides the corrections.
 
-Part 1 is mechanically short. Parts 2 and 3 are mostly simple engineering.
+This chapter builds all three on a cube you shove around with a force every step. Four
+files, about 200 lines. Chapter 2 keeps those same four files and swaps the cube for a
+floppy cake with noodle arms.
 
-This chapter builds all three on the simplest character worth building: **a cube you shove
-around with a force every step**. Four files, about 200 lines, and at the end you have a
-cube that is server-owned, uncheatable, instantly responsive, and smooth. Chapter 2 takes
-those same four files and turns the cube into a floppy cake with noodle arms.
-
----
-
-**Prior reading:** it's recommended you read over the existing Roblox Server Authority
-documentation first: https://create.roblox.com/docs/projects/server-authority
-
----
+**Prior reading:** the Roblox Server Authority documentation —
+https://create.roblox.com/docs/projects/server-authority
 
 ## What you're building
 
@@ -44,12 +37,9 @@ ServerScriptService/
 The suffixes are a file-sync convention: `.luau` is a ModuleScript, `.local.luau` a
 LocalScript, `.legacy.luau` a Script. In Studio they're just the instance class.
 
-Start from an empty baseplate and build it up as you read.
-
-If you'd rather drive the finished thing first, open
-[`samples/chapter1place/`](../samples/chapter1place/) in Studio and press
-**Test → Server & Clients**. The loose scripts are in
-[`samples/cube/`](../samples/cube/).
+Start from an empty baseplate and build it up as you read. To drive the finished thing
+first, open [`samples/chapter1place/`](../samples/chapter1place/) and press
+**Test → Server & Clients**.
 
 ---
 
@@ -66,61 +56,30 @@ That round trip is input lag. Parts 2 and 3 are how it gets hidden.
    replicator requires.
 2. Set `Players.CharacterAutoLoads = false`. You are building your own character, so you
    spawn it.
-3. On the server, create the Model that will be each player's character. **Leave its parts
-   unanchored, and let the solver move them** — see the callout below.
+3. On the server, create the Model that will be each player's character. Leave its parts
+   **unanchored** and let the solver move them.
 4. Set `player.Character` to that model.
 5. Set `player.ReplicationFocus` to the model's root part.
 6. Create the **InputAction** Instances that drive it — a movement vector, buttons —
    parented to the Player, so both machines can read them.
 7. Apply those inputs to the character inside `BindToSimulation`, on the server.
 
-Every frame, on the server: read the player's inputs, drive the character. The server
-replicates it out like anything else in the world.
-
-There are a few extra rules, covered below. But if you could script a client-side character
-before, the server-side version is the same work in a different place, with controls routed
-through the InputAction system.
-
-> ### Let the solver move it
+> **Never anchor your character, and never write its velocity directly.** An anchored part
+> is excluded from client prediction entirely — the owning client reports itself
+> `Authoritative` for its own server-owned character and nothing is ever rolled back. There
+> is no error and no warning. Hand the solver a force and let it do the moving.
 >
-> The temptation is to take the transform into your own hands — anchor the part and write
-> its `CFrame` every step. Don't.
->
-> Set `Anchored = true` on your character and it is excluded from client prediction
-> entirely. The owning client reports itself **`Authoritative`** for its own *server-owned*
-> character, nothing is ever rolled back, and no resimulation happens for it.
->
-> There is no error and no warning. Worse, in single-process `Play` it looks perfect — the
-> server and the client agree to the last decimal, because both machines run the same
-> deterministic code with no latency between them. They agree for reasons that have nothing
-> to do with prediction, and `Play` cannot show you the difference.
->
-> Check it directly rather than trusting the appearance:
->
-> ```lua
-> print(RunService:GetPredictionStatus(root)) --> want Enum.PredictionStatus.Predicted
-> ```
->
-> The same applies to any other way of taking the transform out of the solver's hands.
-> Whatever you do to sidestep the physics engine, you are sidestepping the thing Server
-> Authority is built on.
-
-So the cube is a real physical body. It is unanchored, it has mass, it rests on the floor
-under gravity, and every step the simulation hands it a **force** — which is what Part 1
-actually builds below.
+> Verify with `RunService:GetPredictionStatus(root)`, which should return
+> `Enum.PredictionStatus.Predicted`.
 
 ### Step 1 — Set the two place settings
 
-Select `Workspace`. In Properties, set **AuthorityMode** to **Server**.
+Select `Workspace`. In Properties, set **AuthorityMode** to **Server**. Do this by hand;
+it is place state, not something a script can set.
 
-Do this by hand. `AuthorityMode` is place state, not something a script can set, so it is
-the one step in this article you cannot automate.
+`CharacterAutoLoads` goes in the server script, in Step 2.
 
-`CharacterAutoLoads` goes in the server script, in Step 2. Without it, every player also
-gets a stock avatar you didn't ask for and can't use.
-
-**Check:** reopen the place. `AuthorityMode` still reads `Server`. If it reverted, you
-didn't save.
+**Check:** reopen the place. `AuthorityMode` still reads `Server`.
 
 ### Step 2 — Spawn a cube per player
 
@@ -171,7 +130,8 @@ local function buildInputContext(player: Player)
 	pad.KeyCode = Enum.KeyCode.Thumbstick1
 	pad.Parent = steer
 
-	-- The camera direction rides in as an input too. See Step 4 for why.
+	-- The camera direction rides in as an input too: the server has no camera, and a
+	-- replayed step needs the direction AS IT WAS on that frame.
 	local cameraDir = Instance.new("InputAction")
 	cameraDir.Name = "CameraDir"
 	cameraDir.Type = Enum.InputActionType.Direction3D
@@ -199,13 +159,7 @@ local function spawnCubeFor(player: Player)
 	root.Size = Vector3.new(4, 4, 4)
 	root.Color = Color3.fromRGB(220, 150, 60)
 	root.Position = spawnAt
-
-	-- UNANCHORED, and this is load-bearing. An ANCHORED part is excluded from client
-	-- prediction entirely: the owning client reports itself Authoritative for its own
-	-- server-owned character, and nothing is ever rolled back. See the callout above.
 	root.Anchored = false
-
-	-- A bit slippery, so the servo is fighting the floor rather than the other way round.
 	root.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.1, 0.2, 1, 5)
 	root.Parent = model
 	model.PrimaryPart = root
@@ -267,18 +221,16 @@ require(ReplicatedFirst:WaitForChild("CubeSim")).Initialize()
 print("[CubeServer] ready")
 ```
 
-Two lines in there do far more than they look like they do.
+Two lines there do more than they look like they do.
 
 **`player.ReplicationFocus`** is what the server replicates around, and what prediction is
 centred on. Without it, your own cube isn't predicted and every input feels like a full
-round trip. Because it is one.
+round trip.
 
 **`player.Character`** is what the camera knows not to push through. With no Humanoid,
-nothing sets it, and the stock camera treats your character as scenery and rams itself
-straight through it. Setting it costs nothing and does not summon a Humanoid.
+nothing sets it, and the stock camera treats your character as scenery.
 
-**Check:** press Play. A cube appears at a spawn point and no stock avatar does. The output
-window shows `[CubeServer] ready`.
+**Check:** press Play. A cube appears and no stock avatar does.
 
 ### Step 3 — Write the brain
 
@@ -287,12 +239,6 @@ on **both** machines.
 
 ```lua
 --!strict
--- CubeSim -- the whole character. Runs through BindToSimulation on BOTH machines.
---
--- The contract: the OWNER (the server for all cubes, a client for its own) reads live
--- input and writes intent as ATTRIBUTES. EVERY PEER then drives the part from those
--- attributes, identically. Attributes written in the sim roll back with resimulation,
--- which is what makes that work.
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
@@ -333,7 +279,7 @@ local function readInput(root: BasePart, player: Player)
 	end
 
 	-- Camera-relative steering, recomputed EVERY frame: hold W and swing the camera
-	-- to carve a curve. (Committing the direction only on keypress feels dead.)
+	-- to carve a curve.
 	local camF = readAction(player, "CameraDir") or Vector3.zero
 	local fwd = camF - UP * camF.Y -- flatten onto the ground plane
 	if fwd.Magnitude < 1e-3 then
@@ -364,12 +310,8 @@ local function drive(root: BasePart, dt: number)
 	-- THE VELOCITY SERVO, and it is one line.
 	--
 	-- The gap term closes toward TARGET_SPEED and GOES NEGATIVE above it, which is what
-	-- makes this a CAP rather than a motor: it cannot run away, because overshooting makes
-	-- the force push back. Accelerations ramp, and ramps hide corrections -- so this also
-	-- gives the presentation layer something continuous to smooth.
-	--
-	-- Multiplied by mass at the last moment, so the knobs stay in acceleration units and
-	-- keep their meaning if the cube gets heavier.
+	-- makes this a CAP rather than a motor: it cannot run away. Multiplied by mass at the
+	-- last moment, so the knobs stay in acceleration units.
 	local mass = root.AssemblyMass
 	if driving then
 		thrust.Force = (dir * TARGET_SPEED - vFlat) * (ACCEL_GAIN * mass)
@@ -392,8 +334,9 @@ function CubeSim.Initialize()
 	local isServer = RunService:IsServer()
 	local localPlayer = Players.LocalPlayer -- nil on the server
 
-	-- Hz60, NOT the default. See the callout below -- at the default Hz30 this cube
-	-- steps visibly, and the presentation layer does not hide it.
+	-- Hz60, NOT the default. BindToSimulation defaults to Enum.StepFrequency.Hz30 while
+	-- the physics world runs at 60, so at the default the servo corrects half as often as
+	-- the world it is correcting against.
 	RunService:BindToSimulation(function(dt: number)
 		local cubes = workspace:FindFirstChild("Cubes")
 		if not cubes then
@@ -416,25 +359,26 @@ end
 return CubeSim
 ```
 
-Set `.Name` on every InputAction. The sim finds them with
-`ctx:FindFirstChild("Steer")` — an unnamed action is invisible to the brain, and the cube
-simply won't move.
+Set `.Name` on every InputAction — the sim finds them with `ctx:FindFirstChild("Steer")`,
+so an unnamed action is invisible and the cube won't move.
 
 **Use InputActions, not RemoteEvents.** InputActions replicate *and roll back*. A
-RemoteEvent is a message that arrives whenever it arrives; there is no shared timeline, so
-the server and your client's rollback can't agree on when you pressed the key.
+RemoteEvent has no shared timeline, so the server and your client's rollback can't agree on
+when you pressed the key.
+
+The bind rate is an optional second argument, and it takes an enum:
+
+```lua
+RunService:BindToSimulation(fn, Enum.StepFrequency.Hz60)
+-- Hz60 | Hz30 (default) | Hz15 | Hz10 | Hz5 | Hz1
+```
 
 ### Step 4 — Build a camera, and feed its direction in as input
 
-Server Authority has no `PlayerModule` in a characterless place. `CameraType = Custom` does
-nothing, no controller ever runs, and the camera sits near the origin. Confirm it:
+Server Authority gives you no `PlayerModule` in a characterless place, so `CameraType =
+Custom` does nothing and the camera sits near the origin. You build it.
 
-```lua
-print(Players.LocalPlayer.PlayerScripts:GetChildren())
---> { RbxCharacterSounds }
-```
-
-So you build the camera. `ReplicatedFirst/CubeClient.local.luau`:
+`ReplicatedFirst/CubeClient.local.luau`:
 
 ```lua
 --!strict
@@ -537,134 +481,60 @@ end)
 ```
 
 `camera.CameraType = Enum.CameraType.Scriptable` is load-bearing. Without it, something
-else writes `camera.CFrame` after you do, every frame, and your camera silently does
-nothing.
+else writes `camera.CFrame` after you do and your camera silently does nothing.
 
 That file requires `CubePresent`, which you write in Part 3. To test Part 1 on its own,
 comment out the two `CubePresent` lines and use `root` directly as the camera's `follow`.
 
-**Check — and this is the Part 1 milestone.** Run **Test → Server & Clients**, not `Play`.
-Press W. The cube moves, for everyone, in the direction you're facing — after a delay you
-can feel. That delay is correct at this stage. It's what Part 2 removes.
-
-Measured: the cube settles at a rock-steady **19.1 studs/s** against a `TARGET_SPEED` of 24,
-and reads `Predicted`.
-
-That gap is the servo telling you the truth. The gap term alone settles wherever its pull
-balances floor friction, so it always cruises a little under target. Chapter 2's cake adds
-a **feed-forward** term sized against `µ × gravity` to close it — which is why that term
-exists at all, and why it is the first thing to reach for if your character feels
-underpowered.
-
-> **You will see this warning, and it is harmless:**
-> `Infinite yield possible on 'Workspace.Cubes.Cube_…:WaitForChild("Humanoid")'`
->
-> A Roblox core script reacts to `player.Character` being set by going looking for a
-> Humanoid. There isn't one, and there is not meant to be one. Nothing in your game is
-> waiting on it.
-
-### What `BindToSimulation` cares about
-
-The netcode does not care what shape your character is or how many parts it has. It cares
-that inputs come in, and that something moves the character inside the simulation step.
-Chapter 2 keeps this exact servo and hangs a stack of loose ball sockets off it.
-
-> **`BindToSimulation` defaults to `Enum.StepFrequency.Hz30`. The physics world runs at
-> 60 Hz.** The servo reads a velocity and writes a force every step, so at the default it
-> is correcting half as often as the world it is correcting against.
->
-> The knob is an optional second argument, and it takes an enum, not a number:
->
-> ```lua
-> RunService:BindToSimulation(fn, Enum.StepFrequency.Hz60)
-> -- Hz60 | Hz30 (default) | Hz15 | Hz10 | Hz5 | Hz1
-> ```
->
-> Raising it costs client CPU, so weigh it against your frame budget. Don't assume the
-> presentation layer will cover for a low bind rate — smoothing narrows the steps, it does
-> not remove them.
-
-At the end of Part 1 you have a character the server owns, everyone can see, and nobody can
-cheat. It also has input lag, which is Part 2.
+**Check — the Part 1 milestone.** Run **Test → Server & Clients**. Press W. The cube moves,
+for everyone, in the direction you're facing — after a delay you can feel. That delay is
+what Part 2 removes.
 
 ---
 
 ## Part 2 — client prediction
 
 Any input has to make a round trip — client → server → back to every client — before you
-see the effect. Ping, replication rate and frame rate all add to that delay.
+see the effect.
 
 Inputs the server has already processed show up as changes to the character. Inputs you've
-fired that it hasn't confirmed yet are **in flight**.
+fired that it hasn't confirmed yet are **in flight**, and those are what make
+**resimulation** possible.
 
-Those unconfirmed inputs are what make **resimulation** possible, and resimulation is what
-hides the latency.
-
-### What resimulation does
-
-Say you spend a day moving furniture around your house, then go out. While you're gone,
-your friends carry every piece back to where it started, then repeat all of your moves in
-order until the house is exactly as you left it. You come home and can't tell.
-
-That is resimulation, inside a single frame.
-
-It rests on one idea: **given the same starting physics state, the same inputs, and the same
-amount of time, the simulation produces the same result.**
-
-When a fresh authoritative view arrives from the server, your client still holds a tail of
-recent inputs the server hadn't seen when it produced that view. So the client:
+When a fresh authoritative view arrives from the server, the client:
 
 1. Snaps the world back to the new authoritative server state.
 2. Replays your `BindToSimulation` step once for every still-unconfirmed input frame,
    fast-forwarding to the present.
 
-The client lands back in the present, starting from the server's truth, with all your newer
-input applied. This very effectively hides all of your input latency.
+It lands back in the present, starting from the server's truth, with all your newer input
+applied. That is what removes the input latency.
+
+It rests on one requirement: **given the same starting state, the same inputs, and the same
+amount of time, your simulation must produce the same result.**
 
 ### Step 5 — Run the same brain on the client
 
-There is no "predict me" switch. You already did the work, in three places:
+There is no "predict me" switch. You have already done the work, in three places:
 
 - `CubeSim` is a module, and **`CubeClient` requires and initialises the same file**
   (Step 4). One brain, two machines.
 - Intent lives in **attributes**, which roll back with resimulation.
-- `ReplicationFocus` and `player.Character` are set (Step 2), which is what gives the
-  engine a centre to predict from.
-
-That's the whole of Part 2 for this cube.
+- `ReplicationFocus` and `player.Character` are set (Step 2), which gives the engine a
+  centre to predict from.
 
 **Check:** press W under Server & Clients. The cube moves *immediately*, and a second client
-still sees your cube in the right place. If it feels like a round trip, check the two lines
-from Step 2 before anything else.
-
-### Mispredicts
-
-When the replay lands somewhere different from where the client already was, that's a
-**mispredict**. Raw, it looks like a stutter or a teleport.
-
-Three things to know:
-
-1. **Mispredicts are a cost of doing business.** Minimise them; they are not all bugs.
-2. **Most of the visual disruption is hideable** with the presentation layer in Part 3.
-3. **Some are useful.** Only the server can decide a rocket hit you. Your client
-   mispredicts the knockback and still ends up in the right place on the right trajectory.
-
-Remember — there's always another authoritative view arriving a split second later, giving
-the client another chance to correct. With Part 3 in place, the player sees none of it.
+still sees it in the right place.
 
 ### The rules that keep it deterministic
 
-Your movement code re-runs on every resimulation, and it re-runs often — in single-process
-testing it is normal to see more replayed steps than live ones. So inside
+Your movement code re-runs on every resimulation, often more than it runs live. So inside
 `BindToSimulation`:
 
-1. **Read time from `dt` or the global `time()`, and nothing else.** Most clocks are traps
-   (`os.time`, `tick`, `os.clock`, `DistributedGameTime`): they keep ticking through a
-   replay and stop agreeing with `dt`, and that disagreement *is* a misprediction you built
-   by hand. The global `time()` is safe — under Server Authority it is synchronized across
-   machines and rolls back with resimulation, so inside a replayed step it reports the
-   simulated frame's time. Use it, or accumulate `dt` into an attribute. Both replay
-   identically.
+1. **Read time from `dt` or the global `time()`, and nothing else.** `os.time`, `tick`,
+   `os.clock` and `DistributedGameTime` are wall clocks — they keep ticking through a
+   replay and stop agreeing with `dt`. `time()` rolls back with resimulation, so inside a
+   replayed step it reports the simulated frame's time.
 2. **No randomness**, unless the seed rolls back too.
 3. **No side effects on a replayed step.** Don't play a sound or spawn a particle — it
    already happened the first time. Fire effects from render code off state *transitions*,
@@ -672,39 +542,16 @@ testing it is normal to see more replayed steps than live ones. So inside
 4. **No instance creation** without reading the section on Instance Stitching in the Server
    Authority docs.
 
-`CubeSim` obeys all four, which is the only reason prediction works on it. Chapter 2 shows
-what obeying them costs on a character with clocks, timers and state.
-
-**Check how often it replays.** Log `RunService:IsResimulating()` inside the step for a few
-seconds and count. Replays should be common — comparable to live steps or more. If they're
-rare, you probably aren't predicting at all.
-
-At the end of Part 2 your character responds instantly and is still fully server-owned.
-What's left is that the truth **snaps** when a guess turns out wrong. That's Part 3.
-
 ---
 
 ## Part 3 — a presentation layer
 
-Most frames, resimulation lands exactly where the client already was, and nothing is
-visible. When it doesn't, the correction is abrupt.
+The physics and instance positions of server-owned instances are the **truth**. They have
+no consideration for visual fluidity, but they are correct — and when a prediction misses,
+they snap.
 
-Here is the rule:
-
-> The physics and instance positions of server-owned instances inside the datamodel are the
-> **truth**. It has no consideration for visual fluidity, but it is correct.
-
-So the simplest way to add visual fluidity is to hide the authoritative version entirely on
-the client. You then show the player a second copy created entirely on the client, and use
-critically damped springs to smooth the positions and rotations into place.
-
-That is the whole job of Part 3: keep the authoritative character invisible, keep a visible
-presentation copy of it on the client, and move the visible one toward the authoritative
-truth every frame.
-
-There's a small catch: be careful not to let the visual-only copies get pulled into the
-simulation, collision, raycasts or other game logic. It's an easy mistake to make, and
-Step 6 covers exactly how it bites.
+So hide the authoritative version on the client, show a second copy created entirely on the
+client, and use critically damped springs to ease that copy toward the truth.
 
 ### Step 6 — Build the visual layer
 
@@ -712,10 +559,6 @@ Step 6 covers exactly how it bites.
 
 ```lua
 --!strict
--- CubePresent -- the visual layer.
---
--- Copy A: the authoritative part. Replicated, simulated, and locally INVISIBLE.
--- Copy B: a client-only, anchored clone. A picture. Never simulated; we set its CFrame.
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 
@@ -835,9 +678,6 @@ function CubePresent.Initialize()
 				continue
 			end
 
-			-- Aim at where the truth is GOING, not where it is, or smoothing leaves every
-			-- moving object trailing behind itself on a rubber band.
-			--
 			-- The cube is moved by the physics solver, so it just tells us how fast it is
 			-- going. Nothing to reconstruct.
 			local target = truth.Position + truth.AssemblyLinearVelocity * LEAD
@@ -863,26 +703,24 @@ end
 return CubePresent
 ```
 
-### The one detail that will bite everyone
+Three details in the render step are load-bearing: the **velocity lead**, so smoothing
+doesn't leave moving objects trailing; the **snap distance**, so a teleport isn't smoothed
+across the map; and the **clamped `dt`**, so one hitched frame doesn't fling the copy away.
 
-This is specific to Server Authority, and it is silent:
+### Step 7 — Set `CanQuery = false` on every visual copy
 
-> **Client-only parts default to `CanQuery = true`.**
+**Client-only parts default to `CanQuery = true`.** Your anchored visual copy is therefore
+visible to your own raycasts, on the client only — geometry the server does not have. Your
+client is then simulating a world the server disagrees with, which is a misprediction.
 
-Your anchored visual copy is therefore visible to **your own raycasts**, on the client only.
-That is geometry the server does not have. Your client is now simulating a world the server
-disagrees with, which is the definition of a misprediction.
-
-**The visual layer would silently break the physics it exists to flatter.** Every clone gets
-`CanQuery = false` and `CanTouch = false`.
+Every clone gets `CanQuery = false` and `CanTouch = false`.
 
 **Check:** raycast down from your cube with the default filter. It hits the floor, not a
 visual copy.
 
-### Step 7 — Confirm the layer is doing something
+### Step 8 — Confirm the layer is doing something
 
-Add a debug toggle that reveals the truth in red, semi-transparent, straight over the
-polished copy:
+Overlay the truth in red, semi-transparent, over the polished copy:
 
 ```lua
 truth.LocalTransparencyModifier = 0.45
@@ -891,58 +729,26 @@ copy.LocalTransparencyModifier = 0.35
 ```
 
 **Check — the Part 3 milestone.** With the overlay on, the red truth steps and snaps while
-the visible cube glides through it. Tag only **things the physics moves**: anchored scenery
-must not be tagged, or you'll pay to lerp a wall toward itself sixty times a second.
+the visible cube glides through it.
 
-### If it still isn't smooth
-
-Don't judge it by eye. Measure the frame-to-frame speed of **the copy the player actually
-looks at**, and how much that wobbles around its own average — a steady cube holds its
-speed:
-
-```lua
--- client, while driving
-local copy = workspace.Presentation.Root_Visual
-local last, steps = copy.Position, {}
-local conn = game:GetService("RunService").RenderStepped:Connect(function(dt)
-	table.insert(steps, (copy.Position - last).Magnitude / math.max(dt, 1e-4))
-	last = copy.Position
-end)
-task.wait(1.5)
-conn:Disconnect()
--- then compare each entry against the mean
-```
-
-Then work down this list:
-
-**The bind rate.** At the default `Hz30` the truth advances half as often as the world, and
-smoothing narrows those steps without removing them. Pass `Enum.StepFrequency.Hz60` and
-check it took effect rather than trusting the edit — bind a probe at `Hz60` and see how
-often the character moved between steps. A ratio near 1.0 means you are running at 60; near
-0.5 means you are still at 30.
-
-**Your frame rate.** Nothing looks smooth at 15 fps, and no amount of reading the code will
-fix that. Rule it out first.
-
-**Which layer is at fault.** Comment out `CubePresent.Initialize()` in `CubeClient` and set
-`CAM_SMOOTH = 0`. That shows the raw authoritative truth with nothing filtering it, so you
-can tell a character problem from a rendering one in about five seconds.
+Tag only **things the physics moves**. Anchored scenery must not be tagged, or you pay to
+lerp a wall toward itself sixty times a second.
 
 ---
 
 ## What you have now
 
 A cube that is server-owned, uncheatable, instantly responsive, and smooth — in four files
-and about 200 lines. Every idea in the method is in there:
+and about 200 lines.
 
 | | |
 |---|---|
-| **Part 1** | Server spawns it, owns it, moves it inside `BindToSimulation`. Input arrives as InputActions. |
+| **Part 1** | Server spawns it, owns it, and hands the solver a force inside `BindToSimulation`. Input arrives as InputActions. |
 | **Part 2** | The same brain runs on the client. Intent lives in attributes, so it rolls back and replays. |
 | **Part 3** | The truth is hidden and a smoothed client-only copy is shown, with `CanQuery = false`. |
 
-The netcode is now finished, and it does not care what your character is. Chapter 2 changes
-the character and touches none of the above.
+The netcode is finished, and it does not care what your character is. Chapter 2 changes the
+character and touches none of the above.
 
 ---
 

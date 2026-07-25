@@ -36,8 +36,16 @@ an instruction.
 **No options, no futuring.** Nothing about what you *could* build next, and no alternative
 approaches presented side by side. Pick the one that works and teach that.
 
-**Every claim is something measured in the place.** If a number is in the text, it came out
-of a trace. Where something is unproven, say so.
+**Just how to do it.** No recorded measurements, no side investigations, no war stories, no
+"here's what went wrong when we tried X". Numbers in the text are *settings* the reader
+types, never observations we made.
+
+**A gotcha only survives if it's an instruction.** "Set `CanQuery = false` or your raycasts
+hit the visual copy" stays, because skipping it builds something broken. The story of how we
+found that out does not.
+
+**Scope honesty lives in the repo README**, not in the chapters — one statement of what is
+unproven, once.
 
 **Code in the chapters is the code in the repo.** If they disagree, the repo wins and the
 chapter is wrong. Chapter 1's blocks are verified line-for-line against `samples/cube/`.

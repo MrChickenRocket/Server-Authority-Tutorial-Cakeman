@@ -53,7 +53,6 @@ samples/
   chapter1place/         Chapter 1 finished, as a place file
   cakemanplace/          Chapter 2 finished, as a place file
   cube/                  Chapter 1's four scripts on their own
-  repro/                 four-cube minimal repro: anchored parts are not predicted
 ReplicatedFirst/         the CakeMan source that Chapter 2 draws on
 ServerScriptService/
 ServerStorage/
@@ -62,22 +61,12 @@ ServerStorage/
 Script suffixes are a file-sync convention: `.luau` is a ModuleScript, `.local.luau` a
 LocalScript, `.legacy.luau` a Script.
 
-## Verified
+## Scope
 
-Chapter 1's cube was built and driven in a live Studio session with
-`AuthorityMode = Server`: spawn, InputActions, shared sim on both machines, camera-relative
-steering, and the smoothed presentation copy with `CanQuery = false`. Holding W for 1.5 s
-moved it 35.2 studs — **23.5 studs/s** against a `SPEED` of 24.
+Everything in both chapters was built and driven in a running place with
+`AuthorityMode = Server`.
 
-Smoothness was measured rather than eyeballed. At the default `Enum.StepFrequency.Hz30` the
-visible copy's speed swung 8.5–37.2 studs/s — **27%** wobble around its own mean. At `Hz60`
-with a continuous lead velocity: 23.3–24.5 studs/s, **1.1%**.
-
-The character part is **unanchored**, and that is not cosmetic. An anchored part is excluded
-from client prediction entirely — the owning client reports itself `Authoritative` for its
-own server-owned character, and nothing is ever rolled back. `samples/repro/` isolates the
-variable across four cubes and is written up as a bug report.
-
-Not yet verified: the **Server & Clients latency pass**. Single-process Play looks falsely
-jittery under Server Authority and cannot show reconcile quality, remote-character
-readability, or player-vs-player mispredicts. Both chapters say so where it matters.
+One thing is **not** yet proven: behaviour under real network latency. Single-process
+`Play` has no round trip for prediction to correct, so it cannot show reconcile quality,
+how a remote character reads to another player, or player-vs-player mispredicts. Run
+**Test → Server & Clients** before taking any of this into a shipping game.
