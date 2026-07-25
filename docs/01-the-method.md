@@ -707,13 +707,12 @@ Three details in the render step are load-bearing: the **velocity lead**, so smo
 doesn't leave moving objects trailing; the **snap distance**, so a teleport isn't smoothed
 across the map; and the **clamped `dt`**, so one hitched frame doesn't fling the copy away.
 
-### Step 7 — Set `CanQuery = false` on every visual copy
+### Step 7 — Set `CanQuery = false` (and friends) on every visual copy
 
-**Client-only parts default to `CanQuery = true`.** Your anchored visual copy is therefore
-visible to your own raycasts, on the client only — geometry the server does not have. Your
-client is then simulating a world the server disagrees with, which is a misprediction.
+**Client-only parts default to `CanQuery = true`, `CanCollide = true`, etc.** Your anchored visual copy is therefore
+visible to your own raycasts and other simulation work. You want to clean that up.
 
-Every clone gets `CanQuery = false` and `CanTouch = false`.
+Every clone gets `CanQuery = false`, `CanTouch = false`, `CanCollide = false`.
 
 **Check:** raycast down from your cube with the default filter. It hits the floor, not a
 visual copy.
@@ -739,7 +738,7 @@ lerp a wall toward itself sixty times a second.
 ## What you have now
 
 A cube that is server-owned, uncheatable, instantly responsive, and smooth — in four files
-and about 200 lines.
+and about 200 lines. You can check the .rbxl in the /samples/Chapter1place/ folder
 
 | | |
 |---|---|
