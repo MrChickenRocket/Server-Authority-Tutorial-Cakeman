@@ -29,11 +29,9 @@ There is a tempting way to build a character like this: simulate a tidy invisibl
 then hang a wobbly puppet off it for show. The result *looks* physical and isn't. It can't
 be knocked over, its arms can't catch on anything, and every collision has to be faked.
 
-Do the opposite. The parts you see are the parts the solver is working on.
+Server Authority let's us do the opposite: Just use the raw physics engine and server authority and let the solver work it out.
 
-The mechanism is one property of ball sockets: **they don't merge assemblies.** Every part
-stays its own rigid body, connected by a constraint. Shove the bottom layer and the layers
-above it get dragged along through the joints — *late*. That lag is the wobble.
+Our cake man is quite literally just a stack of unanchored parts with ball sockets holding it all together and some vector forces to make him move about. 
 
 ---
 
