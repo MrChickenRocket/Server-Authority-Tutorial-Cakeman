@@ -1,16 +1,17 @@
 # Server-authoritative physics characters in Roblox
 
-A two-chapter article on building a custom physics character under Roblox **Server
-Authority** (`Workspace.AuthorityMode = Server`) from an empty baseplate. No Humanoid, no
-animation-driven movement.
+A mini article on building a custom physics character under Roblox **Server
+Authority** (`Workspace.AuthorityMode = Server`) from an empty baseplate. 
 
 **[Chapter 1 — the method, built on a sliding cube](docs/01-the-method.md)**
 The three-part method end to end: a server-owned character, client prediction, and a
 presentation layer. Four files, about 200 lines, runnable. Start here.
 
+This one doesn't use a Humanoid or a CharacterController - just straight parts and forces to get you started.
+
 **[Chapter 2 — the cake with noodle arms](docs/02-building-cakeman.md)**
-The same four files, with the cube replaced by a floppy cake on ball sockets. The netcode
-doesn't change; only the character does.
+The natural extension of part 1 - The same four files, with the cube replaced by a floppy cake man made from ball sockets. 
+The netcode doesn't change; only the character does.
 
 **Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
 
@@ -60,13 +61,4 @@ ServerStorage/
 
 Script suffixes are a file-sync convention: `.luau` is a ModuleScript, `.local.luau` a
 LocalScript, `.legacy.luau` a Script.
-
-## Scope
-
-Everything in both chapters was built and driven in a running place with
-`AuthorityMode = Server`.
-
-One thing is **not** yet proven: behaviour under real network latency. Single-process
-`Play` has no round trip for prediction to correct, so it cannot show reconcile quality,
-how a remote character reads to another player, or player-vs-player mispredicts. Run
 **Test → Server & Clients** before taking any of this into a shipping game.
