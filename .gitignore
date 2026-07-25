@@ -8,6 +8,11 @@
 .rbxts/
 node_modules/
 
+# Source recordings. Hero clips are hosted via GitHub's attachment CDN rather than
+# committed -- see docs/assets/README.md. Use `git add -f` to override deliberately.
+*.mp4
+*.mov
+
 # OS
 .DS_Store
 Thumbs.db

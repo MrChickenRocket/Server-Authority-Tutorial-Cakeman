@@ -14,6 +14,16 @@ doesn't change; only the character does.
 
 **Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
 
+<!-- HERO CLIPS -----------------------------------------------------------------
+     Drop the two MP4s into a GitHub issue comment (don't post it), copy the
+     https://github.com/user-attachments/... URL each one turns into, and paste
+     them below as bare URLs on their own line. GitHub renders those as players.
+     See docs/assets/README.md for the full procedure.
+
+     Chapter 1 — the cube:
+     Chapter 2 — CakeMan:
+------------------------------------------------------------------------------ -->
+
 ## Open a place and drive it
 
 | Place | What's in it |

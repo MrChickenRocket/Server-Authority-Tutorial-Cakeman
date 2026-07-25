@@ -20,10 +20,34 @@ renders `<img>` inside markdown:
 
 Two things GitHub will *not* do from a repo path, so don't plan around them:
 
-- **`<video>` tags are stripped** when GitHub renders repo markdown. MP4 only plays if you
-  upload it to an issue, PR or release, which gives you a CDN link rather than a repo file.
+- **`<video>` tags are stripped** when GitHub renders repo markdown. An MP4 committed to
+  the repo cannot play inline, however you reference it.
 - **No lazy loading or click-to-play.** Every GIF on a page downloads and animates as soon
   as the page opens, so a chapter with ten heavy clips is a slow page for everyone.
+
+## Video that does play: the attachment URL
+
+MP4 works if GitHub is hosting it rather than the repo. Uploading a file to any issue or PR
+comment puts it on GitHub's CDN and hands you a URL that renders as a **player** in
+markdown — including in the README.
+
+1. Open a new issue on the repo. Don't submit it.
+2. Drag the MP4 into the comment box and wait for the upload to finish.
+3. It becomes a `https://github.com/user-attachments/assets/...` URL. Copy that.
+4. Close the issue tab without posting.
+5. Paste the URL into the markdown **as a bare URL on its own line**. No `![]()`, no
+   `<video>` — GitHub expands it into a player.
+
+This keeps large clips out of git entirely, which is why the hero clips on the landing page
+use it. The trade is that the file lives on GitHub's CDN rather than in your history, so it
+is not in a clone and not under your control if the repo moves.
+
+Use it for **hero clips and anything long**. Use a committed GIF or WebP for **small
+in-line clips inside a chapter**, where a reader benefits from it being right there in the
+page and in the repo.
+
+Source `.mp4` files are gitignored so a 17 MB recording can't be committed by accident. If
+you deliberately want one in the repo, `git add -f` it.
 
 ## Keep them small
 
