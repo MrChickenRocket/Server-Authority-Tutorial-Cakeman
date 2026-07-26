@@ -9,9 +9,11 @@ the server is simulating it for real and every client agrees on the result.
 
 ## The three parts
 
+Building a server auth character is mechanically very simple. There's three main stages to it: 
+
 1. **A custom server character.** The server owns it and moves it.
-2. **Client prediction.** Hides the input lag.
-3. **A presentation layer.** Hides the corrections.
+2. **Client prediction.** Hide the input lag.
+3. **A presentation layer.** Hide the corrections.
 
 This chapter builds all three on a cube you shove around with a force every step. Four
 files, about 200 lines. Chapter 2 keeps those same four files and swaps the cube for a
@@ -64,12 +66,9 @@ That round trip is input lag. Parts 2 and 3 are how it gets hidden.
    parented to the Player, so both machines can read them.
 7. Apply those inputs to the character inside `BindToSimulation`, on the server.
 
-> **Never anchor your character, and never write its velocity directly.** An anchored part
-> is excluded from client prediction entirely — the owning client reports itself
-> `Authoritative` for its own server-owned character and nothing is ever rolled back. There
-> is no error and no warning. Hand the solver a force and let it do the moving.
->
-> Verify with `RunService:GetPredictionStatus(root)`, which should return
+> **You sadly can't just anchor your character and cframe it directly.** An anchored part
+> is excluded from client prediction entirely and it wont participate in the rollback.
+> You can always verify if a part is predicted with `RunService:GetPredictionStatus(root)`, which should return
 > `Enum.PredictionStatus.Predicted`.
 
 ### Step 1 — Set the two place settings
@@ -232,11 +231,12 @@ print("[CubeServer] ready")
 Two lines there do more than they look like they do.
 
 **`player.ReplicationFocus`** is what the server replicates around, and what prediction is
-centred on. Without it, your own cube isn't predicted and every input feels like a full
-round trip.
+centred on. This is more of a streaming-enabled thing but good to get right.
 
 **`player.Character`** is what the camera knows not to push through. With no Humanoid,
-nothing sets it, and the stock camera treats your character as scenery.
+nothing sets it, and the stock camera treats your character as scenery. 
+
+Importantly: This controls the automatic pulling of parts into the client prediction and rollback loop.
 
 **Check:** press Play. A cube appears and no stock avatar does.
 
@@ -728,11 +728,8 @@ across the map; and the **clamped `dt`**, so one hitched frame doesn't fling the
 ### Step 7 — Hide your presentation parts from the rest of the game
 
 **Your visual copy is still a Part**, and it arrived as a clone, so it inherited
-everything. A part is a loud object in Roblox: by default it collides, answers raycasts,
-fires `Touched`, occludes audio, takes part in fluid forces, and carries every tag and
-attribute the original had.
-
-None of that is visible to you. All of it is visible to your game. So blast it flat:
+everything. A cloned part is a busy object in Roblox: by default it collides, answers raycasts,
+ occludes audio, takes part in fluid forces, and carries every tag and attribute the original had.
 
 ```lua
 copy.CanCollide = false
@@ -741,16 +738,17 @@ copy.CanTouch = false
 copy.AudioCanCollide = false
 copy.EnableFluidForces = false
 copy.Massless = true
+copy.Anchored = true
 -- ...and strip every tag and attribute it inherited
 ```
 
 `CanQuery` is the one that actually costs you. Your anchored copy is visible to your own
 raycasts on the client only — geometry the server does not have — so your client starts
-simulating a world the server disagrees with, which is a misprediction you built by hand.
+simulating a world the server disagrees with, which will mispredict.
 
-The general habit is worth more than the list: **presentation parts are parts, so hide them
+The general habit is: **presentation parts are parts, so hide them
 from your datamodel as thoroughly as you can.** Park them in their own folder, strip what
-they inherited, and turn off every system they have no business being in.
+they inherited, and turn off everything.
 
 **Check:** raycast down from your cube with the default filter. It hits the floor, not a
 visual copy.
@@ -775,7 +773,7 @@ lerp a wall toward itself sixty times a second.
 
 ## What you have now
 
-A cube that is server-owned, uncheatable, instantly responsive, and smooth — in four files
+A cube that is server-owned, uncheatable, instantly responsive, collided well with everything including other players, and smooth — in four files
 and about 200 lines. You can drive the finished place from [`samples/chapter1place/`](../samples/chapter1place/).
 
 | | |
