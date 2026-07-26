@@ -21,19 +21,19 @@ Pay special note to spinning him to flail his arms around and knocking some boxe
 | `CubeServer` → `CakeServer` | Spawns by **cloning a rig** instead of building a Part. |
 | `CubeSim` → `CakeSim` | Same velocity servo, now hauling a whole stack. It gains a hop and a slewed facing. |
 
-The cube already handed a force to the solver every step, so this chapter changes no
-technique — it changes the body the technique is pointed at. One file is genuinely new, and
-it arrives at the end: `CakePunch`.
+The cube was already handing a force to the solver every step, so this chapter builds on that basic idea to drive a whole floppy rig.
+We also add a file to spice up the combat a bit: `CakePunch`.
 
 ## The thesis: the ragdoll is the character
 
-There is a tempting way to build a character like this: simulate a tidy invisible capsule,
-then hang a wobbly puppet off it for show. The result *looks* physical and isn't. It can't
-be knocked over, its arms can't catch on anything, and every collision has to be faked.
+Usually a character controller, even a floppy one, is build without the luxury of proper physics sim server authority:
+Simulate a tidy invisible capsule, then you hang a wobbly puppet off it for show. The result *looks* physical, but sadly isn't. 
+The collisions and floppyness is local only, or, if its on the server, you're eating a lot of latency on input.
 
-Server Authority lets us do the opposite: Just use the raw physics engine and server authority and let the solver work it out.
+Server Authority with physics lets us do the opposite: Just use the raw physics engine and server authority and let the solver work it all out.
 
-Our cake man is quite literally just a stack of unanchored parts with ball sockets holding it all together and some vector forces to make him move about.
+Our cake man is quite literally just a stack of unanchored parts with ball sockets holding it all together and some vector forces to make him move about.  
+We add some visual smoothing to handle the resim and mispredicts, but otherwise its just stock Roblox server authority.
 
 ---
 
@@ -51,17 +51,14 @@ That is the whole character: four cake layers and a cherry, each its own part, w
 socket at every seam. The green boxes are the parts; the gizmos on the joints are the cones
 they are allowed to move inside.
 
-**Take the rig from the sample place rather than building your own.** It is a stack of
-unanchored parts held together by ball sockets, and getting one of those right is a chapter
-in itself — two of the mistakes fail silently, with no error and no warning:
+A couple of quirks to note when building your own rigs:
 
-- An `Attachment` must be **parented before you position it**, or `WorldCFrame` is
-  discarded, every joint lands at its part's origin, and the character collapses into a
-  heap the moment it spawns.
 - A `BallSocketConstraint` measures its cone around the attachment's **X axis**. Build the
   attachment with `CFrame.new(pos)` and X points along world +X, so a limb chaining along Y
   bends on its twist axis and twists on its bend axis.
-
+- If you're scripting something - an `Attachment` must be **parented before you position it**, or `WorldCFrame` is
+  discarded.
+  
 If you do build your own, turn the joint gizmos on and look at them — as in the shot above.
 Both of those mistakes are invisible in code and obvious in a picture. The recipe that
 produced this rig is in
@@ -108,6 +105,7 @@ him.
 The free part: the base hops, and everything above it is dragged into the air a beat later
 through the joints. The cake squashes on the way up and the cherry keeps going after he
 lands.
+
 
 ###  Split facing from movement
 
