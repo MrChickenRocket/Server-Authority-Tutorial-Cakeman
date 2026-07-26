@@ -3,25 +3,25 @@
 A mini article on building a custom physics character under Roblox **Server
 Authority** (`Workspace.AuthorityMode = Server`) from an empty baseplate.
 
+**Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
+
 **[Chapter 1 — the method, built on a sliding cube](docs/01-the-method.md)**
 The three-part method end to end: a server-owned character, client prediction, and a
 presentation layer. Four files, about 200 lines, runnable. Start here.
 
 This one doesn't use a Humanoid or a CharacterController - just straight parts and forces to get you started.
 
+![Two cubes driving on a baseplate, server-owned and predicted](docs/assets/01-cube-driving.webp)
+
+*Chapter 1 — two players, two server-owned cubes, full input prediction, resim, and visual smoothing.*
+
 **[Chapter 2 — the cake with noodle arms](docs/02-building-cakeman.md)**
 The natural extension of part 1 - The same four files, with the cube replaced by a floppy cake man made from ball sockets.
 The netcode doesn't change; only the character does.
 
-**Prior reading:** [Roblox Server Authority documentation](https://create.roblox.com/docs/projects/server-authority)
-
-![Two cubes driving on a baseplate, server-owned and predicted](docs/assets/01-cube-driving.webp)
-
-*Chapter 1 — two players, two server-owned cubes, no Humanoid anywhere.*
-
 ![Two CakeMen squaring up on a platform](docs/assets/02-cakeman-battle.webp)
 
-*Chapter 2 — the same four files, pointed at a stack of ball sockets.*
+*Chapter 2 — the same four files, pointed at a stack of cake, plus some crates to knock over.*
 
 ## Open a place and drive it
 
@@ -47,11 +47,7 @@ from an empty baseplate than read a finished place. Drop them in at these paths:
 | `CubeClient.local.luau` | `ReplicatedFirst` | LocalScript |
 | `CubeServer.legacy.luau` | `ServerScriptService` | Script |
 
-Then set `Workspace.AuthorityMode = Server` by hand in the Properties panel. That one is
-place state and cannot be scripted — a script that tries gets `lacking capability
-RobloxScript`.
-
-`samples/cube.rbxm` is the same thing as a drag-and-drop model.
+Then set `Workspace.AuthorityMode = Server` by hand in the Properties panel.
 
 ## Repo layout
 
