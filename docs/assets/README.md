@@ -52,18 +52,40 @@ you deliberately want one in the repo, `git add -f` it.
 ## Keep them small
 
 Git stores every version of a binary forever, so an oversized clip is a permanent cost, and
-re-exporting it five times means five copies in history. Aim for **under 2 MB**, and treat
-5 MB as a hard ceiling.
+re-exporting it five times means five copies in history. Aim for **under 3 MB** on a hero
+clip and **under 1 MB** for anything inline in a chapter. Treat 5 MB as a hard ceiling.
 
-What actually gets you there, in order of effect:
+The levers, in order of effect:
 
-1. **Crop and downscale.** 640px wide is plenty for an inline clip; most of the frame is
-   usually baseplate.
-2. **Cut the length.** Two to four seconds. A loop that makes its point in three seconds is
-   a better teaching image than a ten-second one anyway.
-3. **Drop the frame rate** to 15–20 fps. Physics wobble reads fine at 15.
-4. **Reduce the palette.** GIF is limited to 256 colours; forcing 64 often halves the file
-   with no visible loss on a flat-shaded Roblox scene.
+1. **Cut the length.** By far the biggest win, and a shorter loop is usually a better
+   teaching image anyway. Seven seconds is plenty for a hero clip; two to four for an
+   inline one.
+2. **Crop and downscale.** 640px wide is plenty; most of the frame is usually baseplate.
+3. **Quality**, before frame rate. libwebp `-q:v` around 40–45 holds up well on flat-shaded
+   Roblox scenes.
+4. **Frame rate last.** 15 fps looks visibly choppy on wobbling physics — 30 is worth
+   paying for, and paying for it out of duration is the better trade.
+
+The command used for the clips here:
+
+```
+ffmpeg -ss 6 -t 7 -i clip.mp4 \
+  -vf "fps=30,scale=640:-2:flags=lanczos" \
+  -c:v libwebp -lossless 0 -q:v 40 -compression_level 6 -loop 0 -an \
+  out.webp
+```
+
+**Verifying the result is awkward.** `ffprobe` reports "image data not found" on animated
+WebP and ffmpeg cannot decode its own output — it encodes animation through libwebp but its
+native decoder ignores `ANMF` chunks. So check the container instead: it should be
+`RIFF`/`WEBP`, the `VP8X` flags byte should have the animation bit set, and the count of
+`ANMF` chunks should equal duration × fps.
+
+```bash
+od -An -c out.webp | tr -d ' \n' | grep -o 'ANMF' | wc -l   # = frame count
+```
+
+Then open it in a browser or on GitHub, because that is the only real test.
 
 **Animated WebP** is worth knowing about: GitHub renders it, it animates, and it is
 routinely 3–10× smaller than the equivalent GIF. If a clip refuses to come under budget as
