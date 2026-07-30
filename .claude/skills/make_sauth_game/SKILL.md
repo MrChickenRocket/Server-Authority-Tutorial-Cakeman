@@ -5,90 +5,106 @@ description: Scaffold a new server-authoritative (SA) custom physics character g
 
 # Make a server-authoritative physics game
 
-Scaffold a working SA physics character using this repo's files as **verified
-templates**. The output is a character you can drive with WASD, camera-relative,
-predicted on the owning client, before any game-specific features.
+Scaffold a working SA physics character from verified templates in this repo. The output is
+a character you can drive with WASD, camera-relative, predicted on the owning client, before
+any game-specific features.
+
+> **This file is a procedure, not doctrine.** The rules live in
+> [`docs/reference/`](../../../docs/reference/) and are maintained there. Do not copy them
+> back into this file — a second copy drifts, and has already done so twice. Link instead.
+
+## 0. Read the rules first
+
+Read [`docs/reference/rules.md`](../../../docs/reference/rules.md) before writing any code.
+It is ~1,400 words and it is the whole set of invariants, the banned-inside-the-sim table,
+and the silent-failure table.
+
+**Almost every Server Authority failure mode is silent.** No error, no warning, no output —
+just a character that feels laggy, or does not move, or mispredicts constantly. You cannot
+debug your way to these; you have to not make them. That is what the tables are for.
+
+Keep [`patterns.md`](../../../docs/reference/patterns.md) open for the code shapes.
 
 ## 1. Gather the concept (ask once, briefly)
 
 - Character name and rough body plan (root part + what hangs off it).
 - Where the synced script folder lives (ScriptSync root).
 
-Default to a two-part rig — one dense root part + one light part on a loose
-ball socket — if the user has no strong opinion. It proves every pipeline stage
-and is trivially reshaped later.
+Default to a two-part rig — one dense root part plus one light part on a loose ball socket —
+if the user has no strong opinion. It proves every pipeline stage and is trivially reshaped
+later.
 
-## 2. Place settings — the ones that break silently
+## 2. Place settings
 
-Tell the user to do these manually in Studio (they are place state, not code,
-and `AuthorityMode` cannot be read or written from tooling Luau):
+These are place state, not code. `AuthorityMode` cannot be read or written from tooling Luau
+(a script that tries gets `lacking capability RobloxScript`), so the user must do it by hand:
 
-1. `Workspace.AuthorityMode = Server` (Properties panel).
-2. Save the place file.
+1. `Workspace.AuthorityMode = Server` in the Properties panel.
+2. Untick `Players.CharacterAutoLoads`.
+3. Save the place file.
 
-Everything else is code. `Players.CharacterAutoLoads = false` is set in the
-server script (visible in source control) — no Humanoids, ever.
+The server script also sets `Players.CharacterAutoLoads = false` in code so the assumption is
+visible in source control. Either alone is enough; do both.
+
+No Humanoids, ever.
 
 ## 3. Generate the four files
 
-Copy and adapt the templates in this repo, renaming `Cake*` to the user's
-character. Keep the file-class suffixes: `.luau` ModuleScript, `.local.luau`
-LocalScript, `.legacy.luau` Script.
+**Scaffold from the cube set.** It is ~200 lines, has no rig complexity, and is verified
+line-for-line against Chapter 1 of the tutorial:
 
-| Template | Role |
-|---|---|
-| `ServerScriptService/CakeServer.legacy.luau` | rig factory, actuators, InputContext, spawn/despawn |
-| `ReplicatedFirst/CakeSim.luau` | the shared brain — velocity servo + steering |
-| `ReplicatedFirst/CakeClient.local.luau` | prediction bootstrap, camera, CameraDir feed |
-| `ReplicatedFirst/Smoothing.luau` | SmoothDamp helper (copy verbatim) |
+| Template | Class | Role |
+|---|---|---|
+| `samples/cube/ServerScriptService/CubeServer.legacy.luau` | Script | Place settings, spawning, actuators, InputContext |
+| `samples/cube/ReplicatedFirst/CubeSim.luau` | ModuleScript | The shared brain — velocity servo + steering |
+| `samples/cube/ReplicatedFirst/CubeClient.local.luau` | LocalScript | Prediction bootstrap, camera, CameraDir feed |
+| `samples/cube/ReplicatedFirst/CubePresent.luau` | ModuleScript | Presentation layer + the critically-damped spring |
 
-## 4. Rules that must survive any adaptation
+Rename `Cube*` to the user's character. Keep the file-class suffixes: `.luau` ModuleScript,
+`.local.luau` LocalScript, `.legacy.luau` Script.
 
-These are the load-bearing patterns; everything else is skinnable.
+The CakeMan set at the repo root (`ReplicatedFirst/CakeSim.luau`,
+`ReplicatedFirst/Presentation.luau`, `ReplicatedFirst/Smoothing.luau`,
+`ServerScriptService/CakeServer.legacy.luau`, `ServerScriptService/CakePunch.legacy.luau`,
+`ServerStorage/GenerateRig.legacy.luau`) is the *next* step, not the scaffold — a ball-socket
+ragdoll with a rig generator and a punch mechanic. Reach for it once the cube drives.
 
-- **State contract**: the owner (server for all characters; a client for its
-  own) reads live input and writes *intent* as attributes on the root part.
-  Every peer drives the actuators from those attributes, identically.
-  Attributes written inside the sim roll back with resimulation.
-- **The sim is deterministic**: no wall-clock, no unseeded randomness, no
-  instance creation, no effects, no yielding inside the `BindToSimulation`
-  callback. It re-runs ~6x during reconcile. Timers are countdown attributes
-  decremented by `dt`; progress clocks advance by distance, not time.
-- **Actuators are pre-wired at spawn**; the sim only sets targets
-  (`.Force`, `.CFrame`) — that's what makes a re-simulated frame idempotent.
-- **`player.ReplicationFocus = root part`** — without it (no Humanoid) nothing
-  near the player gets predicted and every input feels like round-trip latency.
-- **Input via `InputContext`/`InputAction` under the Player**, never
-  RemoteEvents — actions replicate AND roll back. The camera direction is fed
-  in as a `Direction3D` action the client fires (on change > 0.02, plus a
-  0.5 s keep-alive); the sim must never read the camera directly.
-- **Steering recomputed every frame** from the live camera dir; movement uses
-  the target direction immediately while a separate facing direction slews
-  toward it — the body carves, the nose catches up.
-- **Forces, never velocity snaps**: velocity servo = tapered feed-forward +
-  gap term that goes negative above target (a cap, not a motor). Coast with
-  light drag on release, no hard brakes.
-- **`ModelStreamingMode.Atomic`** on the character model.
-- **`BeanSim.Initialize()` equivalent must run on BOTH sides** — server script
-  and client script each `require` and initialize the same module.
-- All tunables at the top of the sim file, in acceleration units, each with a
-  comment saying what it *feels* like.
+## 4. Scaffold decisions you have to make explicitly
+
+Everything else is skinnable; these are the choices the templates encode that an adaptation
+can silently get wrong. Each links to the reasoning.
+
+- **`ModelStreamingMode`** — the cube uses `Persistent`. An instance the client was never sent
+  cannot be predicted, which makes `Persistent` the stronger guarantee for a character;
+  `Atomic` only promises you never see half a model.
+  → [patterns.md §15](../../../docs/reference/patterns.md#model-streaming-for-characters)
+- **Bind frequency** — pass `Enum.StepFrequency.Hz60`. The default is `Hz30` while physics
+  runs at 60, so the servo corrects half as often as the world it is correcting.
+  → [rules.md #2](../../../docs/reference/rules.md#the-non-negotiables)
+- **Both sides initialize the sim module** — the server Script and the client LocalScript each
+  `require` and `Initialize()` the same file. Miss one and nothing moves, with no error.
+  → [rules.md #1](../../../docs/reference/rules.md#the-non-negotiables)
+- **Tunables at the top of the sim file, in acceleration units**, each with a comment saying
+  what it *feels* like. Knobs then keep their meaning when the rig's mass changes.
+  → [physics-characters.md §2](../../../docs/reference/physics-characters.md#2-the-body-is-gameplay-mass-joints-assemblies)
 
 ## 5. Verify — checkpoint before features
 
-Run **Test → Server & Clients** (1 client). Single-process Play looks falsely
-jittery under SA — never judge networking with it. Confirm:
+Run single-process **Play**. It runs the real predict/resimulate loop and is accurate for
+building and tuning. Switch to **Test → Server & Clients** (1 client) plus Network Simulation
+when you specifically want behavior under real latency.
 
 1. Character spawns, console clean.
-2. WASD drives it camera-relative; holding W while swinging the camera carves
-   a curve.
-3. Speed rises to ~TARGET_SPEED and holds (trace it — numbers, not vibes):
+2. `RunService:GetPredictionStatus(root)` returns `Enum.PredictionStatus.Predicted`. If it
+   says `Authoritative`, a character part is anchored.
+3. WASD drives it camera-relative; holding W while swinging the camera carves a curve.
+4. Speed rises to ~`TARGET_SPEED` and holds. Trace it — numbers, not vibes:
 
 ```lua
 -- client command bar, while driving
 local root = workspace.<Folder>["<Name>_" .. game.Players.LocalPlayer.UserId].<Root>
 task.spawn(function()
-	for i = 1, 10 do
+	for _ = 1, 10 do
 		local v = root.AssemblyLinearVelocity
 		print(string.format("v=%.1f", (v - Vector3.yAxis * v.Y).Magnitude))
 		task.wait(0.5)
@@ -96,19 +112,26 @@ task.spawn(function()
 end)
 ```
 
-Symptom table:
+Scaffold-stage symptoms. The full 19-row table is
+[rules.md](../../../docs/reference/rules.md#silent-failures):
 
 | Symptom | Cause |
 |---|---|
-| Input feels like full round-trip lag | `ReplicationFocus` not set |
-| Constant jitter/rubber-banding | Single-process Play — use Server & Clients |
-| Steering ignores the camera | CameraDir action not firing, or sim reads the camera directly |
-| Accelerates forever / overshoots | Velocity set directly, or the negative gap term was dropped |
 | Nothing moves | Sim module not initialized on both sides |
+| Input feels like full round-trip lag | `player.ReplicationFocus` not set |
+| Character never rolls back, status `Authoritative` | A character part is `Anchored` |
+| Stock camera pushes through the character | `player.Character` not set |
+| Camera sits near the world origin | No `PlayerModule` in a characterless place — build it, and set `CameraType = Scriptable` |
+| Steering ignores the camera | CameraDir action not firing, or the sim reads the camera directly |
+| Accelerates forever / overshoots | Velocity set directly, or the negative gap term was dropped |
+| An action does nothing | The `InputAction` has no `.Name` |
+| Constant jitter/rubber-banding | A real prediction bug — chase it, don't switch test modes |
 
 ## 6. What comes next (point, don't build)
 
-Wobble mass, gait/feet, and the presentation layer (hiding correction jitter behind a
-client-only smoothed proxy — remember `CanQuery = false` on every client-side
-visual part, or sim raycasts hit client-only geometry and mispredict). Follow
-the chapter order in this repo's tutorial rather than improvising the order.
+Wobble mass, gait and feet, and the presentation layer. Follow the chapter order in
+[`docs/`](../../../docs/) rather than improvising it.
+
+For anything past the scaffold — omni-surface traversal, gait, chains, steering math, feel
+tuning — [`physics-characters.md`](../../../docs/reference/physics-characters.md) has the
+doctrine and the measurements behind it.

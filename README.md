@@ -25,6 +25,14 @@ The netcode doesn't change; only the character does.
 
 *Chapter 2 — the same four files, pointed at a stack of cake, plus some crates to knock over.*
 
+**[The Server Authority reference](docs/reference/)**
+Everything we know about building under SA, for any project rather than this one. Four files:
+the [invariants and silent-failure tables](docs/reference/rules.md), the
+[platform](docs/reference/server-authority.md), the
+[patterns](docs/reference/patterns.md), and the
+[physics-character doctrine](docs/reference/physics-characters.md). Written to be usable by
+agents as well as people.
+
 ## Open a place and drive it
 
 | Place | What's in it |
@@ -56,6 +64,7 @@ Then set `Workspace.AuthorityMode = Server` by hand in the Properties panel.
 ```
 docs/                    the article
   assets/                screenshots and clips, named for the step that uses them
+  reference/             the Server Authority reference (applies to any SA project)
 samples/
   chapter1place/         Chapter 1 finished, as a place file
   cakemanplace/          Chapter 2 finished, as a place file

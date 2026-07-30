@@ -10,11 +10,17 @@ Start at the [repository README](../README.md) if you're new here.
 `assets/` — screenshots, captured from the running place and named for the chapter and step
 that uses them. See [assets/README.md](assets/README.md) for the shot list.
 
+`reference/` — the [Server Authority reference](reference/README.md). Everything known about
+building under SA, applicable to any project, not just this one. The chapters teach the
+method by building one thing; the reference states the rules with no build order.
+[reference/rules.md](reference/rules.md) is the condensed invariant list.
+
 ---
 
 ## House style
 
-Working notes for anyone editing these two files.
+Working notes for anyone editing these two files. **`reference/` is a different genre and
+does not follow this section** — see [reference/README.md](reference/README.md).
 
 **Voice.** Plain instructor, second person, present tense. No byline, no war stories as
 structure. Author experience appears as a stated measurement or a named hazard, never as an
