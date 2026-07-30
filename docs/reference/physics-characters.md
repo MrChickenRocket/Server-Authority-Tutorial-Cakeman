@@ -32,8 +32,10 @@ Consequences learned by breaking them:
 - Timers are **countdown attributes decremented by `dt`**, never wall-clock.
 - Progress clocks advance by **distance travelled**, not time — cadence tracks speed and
   resimulates identically.
-- The owner **may** write `AssemblyLinearVelocity` inside the sim. It rolls back correctly.
-  Rotating momentum during a surface transition is a legitimate use.
+- The owner **may** write `AssemblyLinearVelocity` inside the sim — it is a Simulation Access
+  property and it rolls back correctly. Rotating momentum during a surface transition is a
+  legitimate use. Prefer forces as the movement channel anyway, for feel: ramps hide
+  corrections, snaps expose them.
 - **Plain Lua tables do not roll back.** A prototype that keeps a trail, a ring buffer, or a
   history table in module state works in single-process Play and diverges the moment it is
   promoted to real prediction. Promoting it means either moving that state into attributes —
@@ -52,9 +54,10 @@ times during reconcile produce the same world.
 ### Characterless place checklist
 
 `CharacterAutoLoads = false` throughout this doctrine. Three things break silently without a
-Humanoid: the server must spawn and despawn the character itself; **`player.ReplicationFocus`
-must point at the character's root** or nothing near the player is predicted; camera and
-input are entirely yours to build. Full detail in
+Humanoid: the server must spawn and despawn the character itself; **`player.Character` must
+be set to the model** or nothing is pulled into the prediction and rollback loop; camera and
+input are entirely yours to build. Set `player.ReplicationFocus` to the root part as well —
+that governs the streaming radius, not prediction. Full detail in
 [patterns.md §15](patterns.md#15-characterless-setups-characterautoloads--false).
 
 ### Two hierarchies, split at boot

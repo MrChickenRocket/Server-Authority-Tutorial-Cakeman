@@ -118,7 +118,7 @@ Scaffold-stage symptoms. The full 19-row table is
 | Symptom | Cause |
 |---|---|
 | Nothing moves | Sim module not initialized on both sides |
-| Input feels like full round-trip lag | `player.ReplicationFocus` not set |
+| Input feels like full round-trip lag | `player.Character` not set — that is what pulls parts into the prediction loop |
 | Character never rolls back, status `Authoritative` | A character part is `Anchored` |
 | Stock camera pushes through the character | `player.Character` not set |
 | Camera sits near the world origin | No `PlayerModule` in a characterless place — build it, and set `CameraType = Scriptable` |

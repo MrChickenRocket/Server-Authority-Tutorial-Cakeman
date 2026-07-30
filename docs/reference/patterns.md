@@ -490,11 +490,14 @@ have nothing to centre on. Four consequences:
 
 1. **The server must spawn the character itself** on `PlayerAdded` and clean it up on
    `PlayerRemoving`.
-2. **Set `player.ReplicationFocus`** to the character's root part. Miss this and
-   `PredictionMode.Automatic` has no radius to predict around: the player's own character is
-   not predicted and every input feels like a full round trip. There is no error.
-3. **Set `player.Character`** to the model. It is what the camera knows not to push through;
-   with no Humanoid nothing sets it, and the stock camera treats the character as scenery.
+2. **Set `player.Character`** to the model. This is what pulls parts into the client
+   prediction and rollback loop. Miss it and the player's own character is not predicted and
+   every input feels like a full round trip. It is also what the camera knows not to push
+   through — with no Humanoid nothing sets it, and the stock camera treats the character as
+   scenery. There is no error for either failure.
+3. **Set `player.ReplicationFocus`** to the character's root part. This is what the server
+   replicates and streams around. It is not the prediction mechanism — `Character` is — but
+   it governs the radius within which streaming keeps things available, so set it.
 4. **Anything assuming a character exists silently does nothing** — default camera and
    control scripts, `CharacterAdded` hooks, `Player.Character` reads. Custom camera and input
    are mandatory.

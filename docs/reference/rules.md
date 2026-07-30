@@ -36,11 +36,19 @@ the character-specific depth.
    `.Position`, `.Enabled`). Setting a target is idempotent; creating an instance is not.
    → [physics-characters.md](physics-characters.md#actuators-are-pre-wired-the-sim-only-sets-targets)
 
-7. **Forces, never velocity snaps, never anchoring.** Hand the solver a force and let it
-   move things.
+7. **Never anchor a character part**, and drive movement with forces rather than by writing
+   velocity every frame. Anchoring is a hard prohibition — it removes the part from
+   prediction. Preferring forces is a *feel* rule: ramps hide corrections, snaps expose them.
+
+   Writing `AssemblyLinearVelocity` is **legal** — it is a Simulation Access property and it
+   rolls back correctly. Rotating momentum during a surface transition is a legitimate use.
+   Use it deliberately, not as the movement channel.
    → [physics-characters.md](physics-characters.md#the-velocity-servo)
 
-8. **Set `player.ReplicationFocus` to the character's root part** in any characterless place.
+8. **Set `player.Character` to the model.** It is what pulls parts into the client
+   prediction and rollback loop. Set `player.ReplicationFocus` to the root part as well, but
+   know what each does: `Character` drives prediction, `ReplicationFocus` governs the
+   streaming radius.
    → [patterns.md](patterns.md#15-characterless-setups-characterautoloads--false)
 
 9. **`CanQuery = false` on every client-side visual part.**
@@ -81,7 +89,7 @@ None of these produce an error or a warning. This table is the reason this docum
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Input feels like full round-trip lag | `player.ReplicationFocus` not set | Set it to the root part |
+| Input feels like full round-trip lag | `player.Character` not set, so nothing is pulled into the prediction and rollback loop | Set it to the model |
 | Nothing moves at all | Sim module initialized on only one side | `require(...).Initialize()` in **both** the server Script and the client LocalScript |
 | Character never rolls back; `GetPredictionStatus` says `Authoritative` | A character part is `Anchored` | Unanchor it |
 | Character is never predicted | The client was never sent the model | Set `ModelStreamingMode` (`Persistent` for characters) |
@@ -120,8 +128,8 @@ In code, per player, on `PlayerAdded`:
 - [ ] Pre-wire every actuator (`VectorForce`, `AlignOrientation`, `AlignPosition`, …)
 - [ ] Seed intent attributes on the root part
 - [ ] Set `ModelStreamingMode`
-- [ ] Set `player.ReplicationFocus = root`
-- [ ] Set `player.Character = model`
+- [ ] Set `player.Character = model` — this is the one that drives prediction
+- [ ] Set `player.ReplicationFocus = root` — streaming radius
 - [ ] Destroy the model on `PlayerRemoving`
 
 Both sides:
