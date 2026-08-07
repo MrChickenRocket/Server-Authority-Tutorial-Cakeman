@@ -9,7 +9,7 @@ the server is simulating it for real and every client agrees on the result.
 
 ## The three parts
 
-Building a server auth character is mechanically very simple. There's three main stages to it: 
+Building a server-auth character is mechanically straightforward. There are three stages:
 
 1. **A custom server character.** The server owns it and moves it.
 2. **Client prediction.** Hide the input lag.
@@ -66,9 +66,9 @@ That round trip is input lag. Parts 2 and 3 are how it gets hidden.
    parented to the Player, so both machines can read them.
 7. Apply those inputs to the character inside `BindToSimulation`, on the server.
 
-> **You sadly can't just anchor your character and cframe it directly.** An anchored part
-> is excluded from client prediction entirely and it wont participate in the rollback.
-> You can always verify if a part is predicted with `RunService:GetPredictionStatus(root)`, which should return
+> **Don't anchor your character and CFrame it directly.** An anchored part is excluded from
+> client prediction entirely and won't participate in the rollback. Verify that a part is
+> predicted with `RunService:GetPredictionStatus(root)`, which should return
 > `Enum.PredictionStatus.Predicted`.
 
 ### Step 1 — Set the two place settings
@@ -122,7 +122,7 @@ local function buildInputContext(player: Player)
 	ctx.Enabled = true
 
 	local steer = Instance.new("InputAction")
-	steer.Name = "Steer" -- the sim looks these up BY NAME
+	steer.Name = "Steer" -- the sim looks these up by name
 	steer.Type = Enum.InputActionType.Direction2D
 	steer.Parent = ctx
 
@@ -137,14 +137,14 @@ local function buildInputContext(player: Player)
 	pad.KeyCode = Enum.KeyCode.Thumbstick1
 	pad.Parent = steer
 
-	-- The camera direction rides in as an input too: the server has no camera, and a
-	-- replayed step needs the direction AS IT WAS on that frame.
+	-- The camera direction rides in as an input too: the server has no camera, and a replayed
+	-- step needs the direction as it was on that frame.
 	local cameraDir = Instance.new("InputAction")
 	cameraDir.Name = "CameraDir"
 	cameraDir.Type = Enum.InputActionType.Direction3D
 	cameraDir.Parent = ctx
 
-	ctx.Parent = player -- parented to the Player, so BOTH machines can read it
+	ctx.Parent = player -- parented to the Player, so both machines can read it
 end
 
 local function spawnCubeFor(player: Player)
@@ -171,9 +171,9 @@ local function spawnCubeFor(player: Player)
 	root.Parent = model
 	model.PrimaryPart = root
 
-	-- ACTUATORS ARE PRE-WIRED HERE, NOT IN THE SIM. The sim may not create instances (it
-	-- re-runs on every replayed step), so everything it could ever need exists up front
-	-- and the sim only writes TARGETS onto it.
+	-- Actuators are pre-wired here rather than in the sim. The sim may not create instances,
+	-- because it re-runs on every replayed step, so everything it could need exists up front
+	-- and the sim only writes targets onto it.
 	local att = Instance.new("Attachment")
 	att.Name = "DriveAtt"
 	att.Parent = root
@@ -206,8 +206,8 @@ local function spawnCubeFor(player: Player)
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	model.Parent = cubes
 
-	-- THE TWO LINES EVERYONE FORGETS. Neither is discoverable.
-	player.ReplicationFocus = root -- what replication and PREDICTION centre on
+	-- Both of these are easy to miss and neither is discoverable.
+	player.ReplicationFocus = root -- what replication and prediction centre on
 	player.Character = model -- what the camera knows not to push through
 
 	print("[CubeServer] spawned", name)
@@ -228,15 +228,14 @@ require(ReplicatedFirst:WaitForChild("CubeSim")).Initialize()
 print("[CubeServer] ready")
 ```
 
-Two lines there do more than they look like they do.
+Two lines there carry more weight than their length suggests.
 
 **`player.ReplicationFocus`** is what the server replicates around, and what prediction is
-centred on. This is more of a streaming-enabled thing but good to get right.
+centred on. It is mostly a streaming-enabled concern, but worth getting right.
 
-**`player.Character`** is what the camera knows not to push through. With no Humanoid,
-nothing sets it, and the stock camera treats your character as scenery. 
-
-Importantly: This controls the automatic pulling of parts into the client prediction and rollback loop.
+**`player.Character`** is what the camera knows not to push through. With no Humanoid nothing
+sets it, and the stock camera treats your character as scenery. It also controls which parts
+are pulled automatically into the client prediction and rollback loop.
 
 **Check:** press Play. A cube appears and no stock avatar does.
 
@@ -252,10 +251,10 @@ local Players = game:GetService("Players")
 
 local CubeSim = {}
 
-local TARGET_SPEED = 24 -- studs/s the servo holds. A CAP, not a motor -- see drive().
+local TARGET_SPEED = 24 -- studs/s the servo holds. A cap, not a motor -- see drive().
 local ACCEL_GAIN = 8 -- servo stiffness: higher = snappier to target, lower = heavier
 local COAST_DRAG = 2 -- gentle damping when not driving: it coasts to a stop
-local TURN_RATE = math.rad(540) -- how fast the FACING catches up. Movement never waits.
+local TURN_RATE = math.rad(540) -- how fast the facing catches up. Movement never waits.
 local UP = Vector3.new(0, 1, 0)
 
 -- Rotate unit `cur` toward unit `tgt` by at most `maxRad` (shortest arc).
@@ -278,7 +277,7 @@ local function readAction(player: Player, name: string): any
 	return action and (action :: any):GetState() or nil
 end
 
--- OWNER: live input -> intent.
+-- Owner: live input -> intent.
 local function readInput(root: BasePart, player: Player)
 	local steer = readAction(player, "Steer") or Vector2.zero
 	if steer.Magnitude < 0.1 then
@@ -286,8 +285,8 @@ local function readInput(root: BasePart, player: Player)
 		return
 	end
 
-	-- Camera-relative steering, recomputed EVERY frame: hold W and swing the camera
-	-- to carve a curve.
+	-- Camera-relative steering, recomputed every frame: hold W and swing the camera to
+	-- carve a curve. Committing the direction only on keypress feels dead.
 	local camF = readAction(player, "CameraDir") or Vector3.zero
 	local fwd = camF - UP * camF.Y -- flatten onto the ground plane
 	if fwd.Magnitude < 1e-3 then
@@ -299,8 +298,8 @@ local function readInput(root: BasePart, player: Player)
 	root:SetAttribute("MoveDir", if move.Magnitude > 1e-3 then move.Unit else Vector3.zero)
 end
 
--- EVERY PEER: drive the ACTUATORS from the (owner-written) attributes. The physics
--- solver does the moving; we only ever hand it a target.
+-- Every peer: drive the actuators from the (owner-written) attributes. The physics solver
+-- does the moving; we only ever hand it a target.
 local function drive(root: BasePart, dt: number)
 	local thrust = root:FindFirstChild("Thrust") :: VectorForce?
 	local heading = root:FindFirstChild("Heading") :: AlignOrientation?
@@ -311,15 +310,13 @@ local function drive(root: BasePart, dt: number)
 	local dir = (root:GetAttribute("MoveDir") :: Vector3?) or Vector3.zero
 	local driving = dir.Magnitude > 1e-3
 
-	-- Servo the HORIZONTAL velocity only. Gravity owns vertical.
+	-- Servo the horizontal velocity only. Gravity owns vertical.
 	local vFlat = root.AssemblyLinearVelocity
 	vFlat -= UP * vFlat.Y
 
-	-- THE VELOCITY SERVO, and it is one line.
-	--
-	-- The gap term closes toward TARGET_SPEED and GOES NEGATIVE above it, which is what
-	-- makes this a CAP rather than a motor: it cannot run away. Multiplied by mass at the
-	-- last moment, so the knobs stay in acceleration units.
+	-- The velocity servo, in one line. The gap term closes toward TARGET_SPEED and goes
+	-- negative above it, which makes it a cap rather than a motor: it cannot run away. Mass
+	-- is applied at the last moment, so the knobs stay in acceleration units.
 	local mass = root.AssemblyMass
 	if driving then
 		thrust.Force = (dir * TARGET_SPEED - vFlat) * (ACCEL_GAIN * mass)
@@ -342,9 +339,9 @@ function CubeSim.Initialize()
 	local isServer = RunService:IsServer()
 	local localPlayer = Players.LocalPlayer -- nil on the server
 
-	-- Hz60, NOT the default. BindToSimulation defaults to Enum.StepFrequency.Hz30 while
-	-- the physics world runs at 60, so at the default the servo corrects half as often as
-	-- the world it is correcting against.
+	-- Hz60 rather than the default. BindToSimulation defaults to Enum.StepFrequency.Hz30
+	-- while the physics world runs at 60, so at the default the servo corrects half as
+	-- often as the world it is correcting against.
 	RunService:BindToSimulation(function(dt: number)
 		local cubes = workspace:FindFirstChild("Cubes")
 		if not cubes then
@@ -383,7 +380,7 @@ RunService:BindToSimulation(fn, Enum.StepFrequency.Hz60)
 
 ### Step 4 — Build a camera, and feed its direction in as input
 
-Server Authority gives you no `PlayerModule` in a characterless place, so `CameraType =
+In a characterless Server Authority place there is no `PlayerModule`, so `CameraType =
 Custom` does nothing and the camera sits near the origin. You build it.
 
 `ReplicatedFirst/CubeClient.local.luau`:
@@ -402,7 +399,7 @@ local player = Players.LocalPlayer
 
 local CubePresent = require(ReplicatedFirst:WaitForChild("CubePresent"))
 CubePresent.Initialize()
-require(ReplicatedFirst:WaitForChild("CubeSim")).Initialize() -- the SAME brain, client side
+require(ReplicatedFirst:WaitForChild("CubeSim")).Initialize() -- the same brain, client side
 
 local camera = workspace.CurrentCamera
 camera.CameraType = Enum.CameraType.Scriptable -- without this, your CFrame is overwritten
@@ -454,8 +451,8 @@ RunService:BindToRenderStep("CubeCamera", Enum.RenderPriority.Camera.Value, func
 		return
 	end
 
-	-- Follow the SMOOTHED copy. The truth is the thing that snaps on a correction, and a
-	-- camera pointed at it turns every correction into a flick of the whole screen.
+	-- Follow the smoothed copy. The truth is what snaps on a correction, and a camera pointed
+	-- at it turns every correction into a flick of the whole screen.
 	local follow = CubePresent.GetSmoothed(root) or root
 	local target = follow.Position + Vector3.new(0, CAM_HEIGHT, 0)
 	if not focus then
@@ -468,11 +465,10 @@ RunService:BindToRenderStep("CubeCamera", Enum.RenderPriority.Camera.Value, func
 	camera.CFrame = CFrame.lookAt(eye, focus :: Vector3)
 end)
 
--- FEED THE CAMERA DIRECTION IN AS AN INPUT.
---
--- The simulation cannot read workspace.CurrentCamera: the server hasn't got one, and a
--- replayed step needs the direction AS IT WAS on that frame. So it arrives like any other
--- input -- fire on change, plus a slow keep-alive.
+-- Feed the camera direction in as an input. The simulation cannot read
+-- workspace.CurrentCamera: the server hasn't got one, and a replayed step needs the
+-- direction as it was on that frame. So it arrives like any other input -- fire on change,
+-- plus a slow keep-alive.
 local playContext = player:WaitForChild("PlayContext")
 local cameraDir = playContext:WaitForChild("CameraDir")
 local lastFired = Vector3.zero
@@ -617,14 +613,13 @@ local function adopt(truth: BasePart)
 
 	local copy = truth:Clone()
 
-	-- A VISUAL COPY IS STILL A PART, AND A CLONE INHERITS EVERYTHING.
-	--
-	-- Left alone it will collide, answer raycasts, fire Touched, take part in fluid
-	-- forces, occlude audio, and carry every tag and attribute the original had. All of
-	-- that is invisible to you and visible to your game. Neutralise the lot.
+	-- A visual copy is still a part, and a clone inherits everything. Left alone it will
+	-- collide, answer raycasts, fire Touched, take part in fluid forces, occlude audio, and
+	-- carry every tag and attribute the original had -- all of it invisible to you and
+	-- visible to your game. Neutralise the lot.
 	--
 	-- The tags matter most: the copy would arrive already tagged "Presented", we would
-	-- present IT, that copy would arrive tagged too, and the layer eats itself.
+	-- present it, that copy would arrive tagged too, and the layer would feed on itself.
 	for _, tag in CollectionService:GetTags(copy) do
 		CollectionService:RemoveTag(copy, tag)
 	end
@@ -634,7 +629,7 @@ local function adopt(truth: BasePart)
 
 	copy.Anchored = true
 	copy.CanCollide = false
-	copy.CanQuery = false -- raycasts. See the note below -- this one is the expensive miss.
+	copy.CanQuery = false -- raycasts. The costliest one to miss: see the note above.
 	copy.CanTouch = false
 	copy.AudioCanCollide = false
 	copy.EnableFluidForces = false
@@ -643,7 +638,7 @@ local function adopt(truth: BasePart)
 	copy.Name = truth.Name .. "_Visual"
 	copy.Parent = visualsFolder()
 
-	-- Hide the truth, on THIS CLIENT ONLY. LocalTransparencyModifier is client-side: the
+	-- Hide the truth, on this client only. LocalTransparencyModifier is client-side: the
 	-- server's copy is untouched and nobody else's view changes.
 	truth.LocalTransparencyModifier = 1
 
@@ -668,8 +663,8 @@ local function abandon(truth: BasePart)
 end
 
 function CubePresent.Initialize()
-	-- The entire subscription. One tag in, visual copies out. This file knows nothing
-	-- about cubes; it knows about a tag.
+	-- The entire subscription. One tag in, visual copies out. This file is driven by the tag
+	-- alone and knows nothing about cubes.
 	local function consider(inst: Instance)
 		if inst:IsA("BasePart") then
 			adopt(inst :: BasePart)
@@ -711,8 +706,8 @@ function CubePresent.Initialize()
 	end)
 end
 
--- The camera should follow the SMOOTHED copy. Tracking the truth means tracking a thing
--- that snaps.
+-- The camera should follow the smoothed copy. Tracking the truth means tracking a thing that
+-- snaps on every correction.
 function CubePresent.GetSmoothed(truth: BasePart): BasePart?
 	local f = follows[truth]
 	return f and f.copy or nil
@@ -727,9 +722,9 @@ across the map; and the **clamped `dt`**, so one hitched frame doesn't fling the
 
 ### Step 7 — Hide your presentation parts from the rest of the game
 
-**Your visual copy is still a Part**, and it arrived as a clone, so it inherited
-everything. A cloned part is a busy object in Roblox: by default it collides, answers raycasts,
- occludes audio, takes part in fluid forces, and carries every tag and attribute the original had.
+**Your visual copy is still a Part**, and it arrived as a clone, so it inherited everything.
+A cloned part is a busy object: by default it collides, answers raycasts, occludes audio,
+takes part in fluid forces, and carries every tag and attribute the original had.
 
 ```lua
 copy.CanCollide = false
@@ -773,8 +768,10 @@ lerp a wall toward itself sixty times a second.
 
 ## What you have now
 
-A cube that is server-owned, uncheatable, instantly responsive, collided well with everything including other players, and smooth — in four files
-and about 200 lines. You can drive the finished place from [`samples/chapter1place/`](../samples/chapter1place/).
+A cube that is server-owned, secure against movement cheats, instantly responsive, smoothly
+rendered, and collides properly with scenery and with other players — in four files and about
+200 lines. You can drive the finished place from
+[`samples/chapter1place/`](../samples/chapter1place/).
 
 | | |
 |---|---|

@@ -11,15 +11,15 @@ Authority** (`Workspace.AuthorityMode = Server`) from an empty baseplate.
 The three-part method end to end: a server-owned character, client prediction, and a
 presentation layer. Four files, about 200 lines, runnable. Start here.
 
-This one doesn't use a Humanoid or a CharacterController - just straight parts and forces to get you started.
+No Humanoid and no CharacterController — just parts and forces, to get you started.
 
 ![Two cubes driving on a baseplate, server-owned and predicted](docs/assets/01-cube-driving.webp)
 
 *Chapter 1 — two players, two server-owned cubes, full input prediction, resim, and visual smoothing.*
 
 **[Chapter 2 — the cake with noodle arms](docs/02-building-cakeman.md)**
-The natural extension of part 1 - The same four files, with the cube replaced by a floppy cake man made from ball sockets.
-The netcode doesn't change; only the character does.
+The natural extension of Chapter 1: the same four files, with the cube replaced by a floppy
+cake man built from ball sockets. The netcode is unchanged — only the character differs.
 
 ![Two CakeMen squaring up on a platform](docs/assets/02-cakeman-battle.webp)
 

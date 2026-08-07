@@ -41,6 +41,15 @@ Consequences learned by breaking them:
   promoted to real prediction. Promoting it means either moving that state into attributes —
   budget it, 24 `Vector3`s is roughly 288 bytes against a 64-attribute cap — or reformulating
   the mechanic to need only the predecessor's replicated state.
+- **Separate config attributes from intent attributes, and put them on different instances.**
+  Tuning that describes the body — target speed, turn rate, gait stride — belongs on the
+  character **model** as read-only config the sim never writes. Intent belongs on the **root
+  part** and is written every step. Both replicate; only intent needs to roll back. Keeping
+  them on separate instances makes "may the sim write this?" answerable by looking at where it
+  lives, and it lets a designer retune a body from the Properties panel mid-playtest without
+  touching a script. Read config per step rather than caching it — a cache needs an
+  `AttributeChanged` connection, and connecting a signal inside a step that re-runs during
+  reconcile is exactly the side effect rule 3 forbids.
 
 ### Actuators are pre-wired; the sim only sets targets
 
@@ -91,6 +100,45 @@ clients never see half a character.
   last moment. Knobs then keep their meaning when the rig's mass changes.
 - **Loosen authored joint limits in code at spawn.** Floppiness is expressiveness, and the
   renderer follows whatever the physics does. A neck authored at 25° opened to 80° in code.
+
+### Stacked bodies: the cone is the pose, the friction is the material
+
+A stack of parts on ball sockets, with each socket below its part's centre of mass, is a chain
+of **inverted pendulums**. Nothing holds a segment up. It topples to its cone limit and rests
+there.
+
+- **The cone angle is the rest pose, not a safety rail.** Size it so that "fully toppled" still
+  reads as standing. On the 4-layer rig: 6° per joint across three joints, so a fully slumped
+  body leans about 18° and is permanently mid-topple and permanently caught.
+- **Hanging chains are the opposite case.** A limb that hangs is a normal pendulum and is
+  stable, so it can be as floppy as you like — 45° cones, four joints in series, and the limb
+  behaves as a noodle with no risk to the body's posture.
+- **Mass goes at the bottom.** A bottom-heavy stack rights itself. Past stability, light upper
+  segments cut the gravity torque the joints have to resist, which lets you buy less joint
+  friction — and joint friction is expensive. Measured: friction wound to 2200 effectively
+  welds the joints, the solver spends the drive force fighting the character's own constraints,
+  thrust climbs past 14,000 and the body crawls at 3 studs/s.
+- **Size joint friction against gravity's torque on one segment** — roughly `mass * g * half a
+  stud of lever`, about 2000 on this rig. Below it the stack sags to its cone limits and stays
+  slumped. At about that value, friction holds the pose until something larger than gravity
+  arrives — an acceleration, a turn, an impact — and then it deforms and *stays* deformed. That
+  is plastic rather than elastic, and plastic is the right material model for a body that
+  should read as soft.
+- **No restoring springs.** A per-segment restoring torque stands the body up straighter and
+  cancels the joint lag that makes it read as soft in the first place. The sockets and their
+  limits are the character.
+- **Widening a segment adds mass as the square.** Bulging mid-segments for silhouette puts
+  weight up high; on the 4-layer rig the upper segments total about 1.5 against the base's 8,
+  which is affordable. Widen much further and density has to come back out.
+- **The part touching the floor is a heavy box sliding on a plane.** At normal friction it
+  grabs: an edge catches, the body stops mid-stride, and thrust piles up until it lurches free.
+  Make it genuinely slippery (`Friction = 0.05`) and set `FrictionWeight` high (5) so your
+  number wins the argument against whatever surface it is standing on.
+
+Tuning of this kind belongs **on the rig instance**, not in the script that generated it: you
+can select a joint, see its cone in a gizmo, and feel the change on the next playtest without a
+rebuild. What the instance cannot hold is the reasoning above, which is why it is written down
+here.
 
 ## 3. Locomotion: slide the body, the legs keep up
 
@@ -197,8 +245,8 @@ Wall-and-ceiling traversal, in dependency order. Each item is load-bearing.
 
 2. **The frame comes from contacts, per half.** Front half and rear half each blend their
    contact normals with their body's down-ray. Two independent frames let the body straddle an
-   edge; contact blending keeps the frame valid at lips, smooths corners, and "ramp-ifies"
-   staircases for free.
+   edge; contact blending keeps the frame valid at lips, smooths corners, and flattens
+   staircases into ramps.
 
 3. **The rear's "ahead" is toward the front half** — not the steering direction, which lives
    in the front's plane and can project to nothing in the rear's. Without this the rear never

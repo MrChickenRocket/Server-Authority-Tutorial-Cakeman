@@ -1,55 +1,54 @@
 --!strict
--- CakeSim — server-authoritative locomotion for every player's CakeMan, run
--- through BindToSimulation on BOTH sides. Deterministic only: no wall clocks, no
--- randomness, no instance creation, no effects (the step re-runs ~6x during
--- reconcile). It keeps time with dt; the global time() is resim-safe too, if you need it.
+-- CakeSim -- locomotion for every player's CakeMan, run through BindToSimulation on
+-- both sides. It must stay deterministic, because the step re-runs several times during
+-- reconciliation: no wall clocks, no randomness, no instance creation, no effects. Keep
+-- time with dt. The global time() is resim-safe if you need it.
 --
--- The whole character is: drive the BOTTOM layer, and let the stack wobble.
--- That's it. There is no balance controller, no gait, no leg logic -- the wobble
--- comes free from four blocks on loose ball sockets, and the physics engine does
--- all of the work we would otherwise have written (badly).
+-- Only the bottom layer is driven. The wobble is what four blocks on loose ball sockets
+-- do by themselves, so there is no balance controller, gait, or leg logic in this file.
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 local CakeSim = {}
 
-local TARGET_SPEED = 12 -- studs/s the servo holds (a cap, not a motor)
-local ACCEL_GAIN = 6 -- servo stiffness: higher = snappier to target. Low = heavy
-local FRICTION_FF = 30 -- feed-forward accel that breaks the base's drag on the floor.
--- Size it against the friction it has to beat: sliding needs about mu * gravity of
--- acceleration, and his base is deliberately slippery (mu 0.05, so ~10), so this is
--- mostly just eagerness off the line now. It was 115 back when he had a grippy base
--- and had to tear himself free of the floor every step.
-local FF_TAPER_END = 1.3 -- FF is full at TARGET_SPEED and fades to zero at this
--- multiple of it. Untapered it overruns the cap on smooth ground; tapered from zero
--- it feels flat. The knee keeps the zip while the cap stays honest.
-local COAST_DRAG = 2 -- gentle damping when not driving: he trundles to a stop
-local TURN_RATE = math.rad(720) -- how fast the FACING catches up (movement never
--- waits for it: you slide off immediately and the cake swings around after).
--- Cranked right up so he SPINS: flick the camera and he whips round on the spot,
--- and the arms -- which are just noodles with heavy fists, obeying nothing but
--- physics -- get flung out sideways. Nothing animates that. It's free.
-
--- THE HOP. He has no legs, so he bounces -- little bird hops as he trundles along.
+-- Tuning lives on the rig as attributes, so you can change how he moves from the Properties
+-- panel mid-playtest instead of editing this file. The numbers below are fallbacks for a rig
+-- that doesn't carry the attribute.
 --
--- The clock that drives it advances by DISTANCE TRAVELLED, not by time. This is not a
--- stylistic choice, it's the only thing that works:
---   * it resimulates identically (a wall clock does not -- see the four rules),
---   * and the cadence tracks his speed for free. Slow down and he hops slower, with no
---     extra code. Speed and rhythm can't drift apart, because they're the same number.
-local HOP_STRIDE = 2.75 -- studs travelled per hop. Cadence = TARGET_SPEED / HOP_STRIDE.
-local HOP_WINDOW = 0.14 -- fraction of each cycle spent pushing off the ground
-local HOP_ACCEL = 520 -- upward accel during that window. It has to beat gravity (196)
--- by a lot, because the window is short -- most of this number is just paying the rent.
-local HOP_GROUNDED_VY = 3 -- only push off when he's actually ON something: if he's
--- already rising or falling faster than this, the hop is spent. Without this check he
--- boosts himself in mid-air on every cycle and floats away like a balloon.
-local HOP_MIN_SPEED = 4 -- the floor the clock runs at while he's DRIVING, even if he is
--- getting nowhere. A pure distance clock stops dead the moment he's blocked -- shoved up
--- against a wall or a cover block he'd just lean there, silent and still, looking switched
--- off at exactly the moment the player is mashing a key. So while the intent is there he
--- keeps bouncing. Above this speed the clock is distance again and the cadence tracks him
--- for free, which is the property worth keeping.
+-- Two kinds of attribute are in play here and they must not be confused. These are config:
+-- they sit on the Model, the sim only ever reads them, and they never roll back. The intent
+-- attributes further down -- Driving, TargetDir, DriveDir, HopPhase -- sit on the base part,
+-- are written inside the sim, and do roll back with resimulation.
+local DEFAULTS: { [string]: number } = {
+	TargetSpeed = 12, -- studs/s the servo holds (a cap, not a motor)
+	AccelGain = 6, -- servo stiffness: higher = snappier to target, lower = heavier
+	FrictionFF = 30, -- feed-forward accel that breaks the base's drag on the floor. Sliding
+	-- needs roughly mu * gravity, and the base is deliberately slippery (mu 0.05, so about
+	-- 10), so most of this is eagerness off the line.
+	FFTaperEnd = 1.3, -- FF is full at TargetSpeed and fades to zero at this multiple of it.
+	-- Untapered it overruns the cap on smooth ground; tapered from zero it feels flat.
+	CoastDrag = 2, -- gentle damping when not driving, so he trundles to a stop
+	TurnRate = 720, -- degrees/s the facing catches up at. Movement never waits for it, so you
+	-- slide off immediately and the cake swings around after. High enough that a camera flick
+	-- spins him on the spot and flings the arms out sideways.
+	HopStride = 2.75, -- studs travelled per hop. Cadence = TargetSpeed / HopStride
+	HopWindow = 0.14, -- fraction of each cycle spent pushing off the ground
+	HopAccel = 520, -- upward accel during that window. Has to beat gravity (196) by a lot,
+	-- because the window is short.
+	HopGroundedVY = 3, -- only push off when he is resting on something. Without this check he
+	-- boosts himself in mid-air every cycle and floats away.
+	HopMinSpeed = 4, -- the floor the hop clock runs at while driving. A pure distance clock
+	-- stops dead the moment he is blocked, so he would stand silent against a wall while the
+	-- player mashes a key. Above this speed the clock is distance again.
+}
+
+-- Read one tuning value off the rig, falling back to the table above. Read per step rather
+-- than cached: it needs no signal connections and leaves no state to survive a rollback, and
+-- eleven attribute lookups are nothing next to the totalMass() walk already happening below.
+local function tuned(man: Model, name: string): number
+	local v = man:GetAttribute(name)
+	return if type(v) == "number" then v :: number else DEFAULTS[name]
+end
 
 local UP = Vector3.new(0, 1, 0)
 
@@ -89,14 +88,14 @@ local function slewDir(cur: Vector3, tgt: Vector3, maxRad: number): Vector3
 	return CFrame.fromAxisAngle(axis.Unit, math.min(maxRad, ang)):VectorToWorldSpace(cur)
 end
 
--- OWNER: read live input -> write intent attributes (these replicate AND roll back).
-local function readInputIntoAttributes(base: BasePart, player: Player, dt: number)
+-- Owner: read live input, write intent attributes. These replicate and roll back.
+local function readInputIntoAttributes(man: Model, base: BasePart, player: Player, dt: number)
 	local steer = readAction(player, "Steer")
 	local driving = steer.Magnitude > 0.1
 	base:SetAttribute("Driving", driving)
 
-	-- Camera-relative steering, recomputed EVERY FRAME: hold W and swing the
-	-- camera to carve a curve. (Committing only on key-change feels dead.)
+	-- Camera-relative steering, recomputed every frame: hold W and swing the camera to
+	-- carve a curve. Committing the direction only on key-change feels dead.
 	if driving then
 		local camF = readCameraDir(player)
 		local fwd = camF - UP * camF.Y -- camera forward, flattened onto the ground plane
@@ -110,32 +109,32 @@ local function readInputIntoAttributes(base: BasePart, player: Player, dt: numbe
 		end
 	end
 
-	-- Advance the hop clock by distance travelled. Let go and it stops -- the clock IS the
-	-- speedometer, so he can't hop on the spot without meaning to. But while he's DRIVING
-	-- it never drops below HOP_MIN_SPEED, so being blocked doesn't switch him off: he keeps
-	-- bouncing against whatever he's stuck on. Both terms are rolled-back state, so this
-	-- still replays identically.
+	-- Advance the hop clock by distance travelled rather than by time: distance resimulates
+	-- identically where a wall clock does not, and the cadence tracks his speed with no extra
+	-- code. Floored at HopMinSpeed while driving, so being blocked doesn't stop the bounce.
+	-- Both terms are rolled-back state, so this replays identically.
 	local v = base.AssemblyLinearVelocity
 	local speed = (v - UP * v.Y).Magnitude
 	if driving then
-		speed = math.max(speed, HOP_MIN_SPEED)
+		speed = math.max(speed, tuned(man, "HopMinSpeed"))
 	end
 	local hop = (base:GetAttribute("HopPhase") :: number?) or 0
-	base:SetAttribute("HopPhase", (hop + speed * dt / HOP_STRIDE) % 1)
+	base:SetAttribute("HopPhase", (hop + speed * dt / tuned(man, "HopStride")) % 1)
 
-	-- The FACING chases the movement at TURN_RATE. Movement itself never waits.
+	-- The facing chases the movement at TurnRate. Movement itself never waits.
 	local tdir = base:GetAttribute("TargetDir") :: Vector3?
 	if tdir then
+		local turn = math.rad(tuned(man, "TurnRate")) * dt
 		local cur = base:GetAttribute("DriveDir") :: Vector3?
 		if not cur or (cur :: Vector3).Magnitude < 1e-3 then
 			base:SetAttribute("DriveDir", tdir)
 		else
-			base:SetAttribute("DriveDir", slewDir((cur :: Vector3).Unit, tdir, TURN_RATE * dt))
+			base:SetAttribute("DriveDir", slewDir((cur :: Vector3).Unit, tdir, turn))
 		end
 	end
 end
 
--- EVERY PEER: drive the actuators from the (owner-written) attributes.
+-- Every peer: drive the actuators from the (owner-written) attributes.
 local function drive(man: Model, base: BasePart, dt: number)
 	local thrust = base:FindFirstChild("Thrust") :: VectorForce?
 	local align = base:FindFirstChild("Heading") :: AlignOrientation?
@@ -148,33 +147,36 @@ local function drive(man: Model, base: BasePart, dt: number)
 	local moveDir = base:GetAttribute("TargetDir") :: Vector3?
 	local faceDir = (base:GetAttribute("DriveDir") :: Vector3?) or moveDir
 
-	-- Thrust must haul the WHOLE stack, not just the base: the layers above hang off
-	-- it through the joints and every one of them is dead weight the base has to drag.
+	-- Thrust hauls the whole stack, not just the base: the layers above hang off it
+	-- through the joints, and every one of them is weight the base has to drag.
 	local mass = totalMass(man)
 	local vFlat = base.AssemblyLinearVelocity
-	vFlat = vFlat - UP * vFlat.Y -- servo the HORIZONTAL velocity; gravity owns vertical
+	vFlat = vFlat - UP * vFlat.Y -- servo the horizontal velocity; gravity owns vertical
 
 	local force: Vector3
 	if driving and moveDir then
-		-- Velocity servo: feed-forward breaks drag (tapering off past the target),
-		-- while the gap term closes to TARGET_SPEED and goes NEGATIVE above it, so
-		-- it's a cap. Accelerations ramp; ramps hide corrections. Never snap.
+		-- Velocity servo. Feed-forward breaks drag and tapers off past the target, while the
+		-- gap term closes to TargetSpeed and goes negative above it, which is what makes it a
+		-- cap. Accelerations ramp, and ramps hide corrections.
+		local targetSpeed = tuned(man, "TargetSpeed")
+		local taperEnd = tuned(man, "FFTaperEnd")
 		local along = vFlat:Dot(moveDir)
-		local ffScale = math.clamp(1 - (along - TARGET_SPEED) / (TARGET_SPEED * (FF_TAPER_END - 1)), 0, 1)
-		force = (moveDir * (FRICTION_FF * ffScale) + (moveDir * TARGET_SPEED - vFlat) * ACCEL_GAIN) * mass
+		local ffScale = math.clamp(1 - (along - targetSpeed) / (targetSpeed * (taperEnd - 1)), 0, 1)
+		local ff = moveDir * (tuned(man, "FrictionFF") * ffScale)
+		local gap = (moveDir * targetSpeed - vFlat) * tuned(man, "AccelGain")
+		force = (ff + gap) * mass
 	else
-		force = -vFlat * (COAST_DRAG * mass) -- coast to rest, no hard brake
+		force = -vFlat * (tuned(man, "CoastDrag") * mass) -- coast to rest, no hard brake
 	end
 
-	-- The hop. Push off during the early slice of each cycle, and only while he's
-	-- actually resting on something. Everything above the base is dragged into the air
-	-- a beat later through the joints -- so the cake squashes on the way up and the
-	-- cherry keeps going after he lands. None of that is animated. It's the same lag
-	-- that makes him wobble, now working vertically.
+	-- Push off during the early slice of each cycle, and only while he is resting on
+	-- something. Everything above the base follows a beat later through the joints, so the
+	-- cake squashes on the way up and the cherry keeps going after he lands. That is the
+	-- same joint lag that makes him wobble, working vertically.
 	local hopPhase = (base:GetAttribute("HopPhase") :: number?) or 0
 	local vy = base.AssemblyLinearVelocity.Y
-	if driving and hopPhase < HOP_WINDOW and math.abs(vy) < HOP_GROUNDED_VY then
-		force += UP * (HOP_ACCEL * mass)
+	if driving and hopPhase < tuned(man, "HopWindow") and math.abs(vy) < tuned(man, "HopGroundedVY") then
+		force += UP * (tuned(man, "HopAccel") * mass)
 	end
 	thrust.Force = force
 
@@ -182,14 +184,12 @@ local function drive(man: Model, base: BasePart, dt: number)
 		align.CFrame = CFrame.lookAt(Vector3.zero, faceDir :: Vector3) -- base -Z faces travel
 	end
 
-	-- ...and that's the entire character. Layers, head and arms are never touched by
-	-- this code otherwise: they're along for the ride, dragged through their sockets by
-	-- a base that's going somewhere. All the wobble is the physics engine's, for free.
+	-- Layers, head and arms are never touched from here. They are dragged through their
+	-- sockets by a base that's going somewhere, and the physics engine supplies the wobble.
 	--
-	-- Punching is NOT here, and that's the line worth holding: this file is the movement
-	-- brain and it re-runs during reconciliation, so it may only read input and write
-	-- actuator targets. Who hit whom is a consequence, and consequences belong to the
-	-- server. See CakePunch.
+	-- Punching is deliberately not in this file. CakeSim re-runs during reconciliation, so
+	-- it may only read input and write actuator targets. Deciding who hit whom is the
+	-- server's job -- see CakePunch.
 end
 
 function CakeSim.Initialize()
@@ -205,7 +205,7 @@ function CakeSim.Initialize()
 			local base = man and man:IsA("Model") and man:FindFirstChild("Layer1") :: BasePart?
 			if base then
 				if isServer or player == localPlayer then
-					readInputIntoAttributes(base, player, dt)
+					readInputIntoAttributes(man :: Model, base, player, dt)
 				end
 				drive(man :: Model, base, dt)
 			end

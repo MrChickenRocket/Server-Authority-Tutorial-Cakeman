@@ -53,7 +53,9 @@ found that out does not.
 **No disclaimers.** This has been run under real latency and it works. Don't hedge it.
 
 **Code in the chapters is the code in the repo.** If they disagree, the repo wins and the
-chapter is wrong. Chapter 1's blocks are verified line-for-line against `samples/cube/`.
+chapter is wrong. Chapter 1's blocks are the `samples/cube/` files abridged for length: file
+headers and some longer comments are trimmed, but every line of executable code matches, and
+no comment may be reworded into saying something the repo doesn't say.
 
 ## Retired drafts
 

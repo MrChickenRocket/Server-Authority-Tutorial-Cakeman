@@ -28,7 +28,7 @@ local function buildInputContext(player: Player)
 	ctx.Enabled = true
 
 	local steer = Instance.new("InputAction")
-	steer.Name = "Steer" -- the sim looks these up BY NAME
+	steer.Name = "Steer" -- the sim looks these up by name
 	steer.Type = Enum.InputActionType.Direction2D
 	steer.Parent = ctx
 
@@ -43,14 +43,14 @@ local function buildInputContext(player: Player)
 	pad.KeyCode = Enum.KeyCode.Thumbstick1
 	pad.Parent = steer
 
-	-- The camera direction rides in as an input too: the server has no camera, and a
-	-- replayed step needs the direction AS IT WAS on that frame.
+	-- The camera direction rides in as an input too: the server has no camera, and a replayed
+	-- step needs the direction as it was on that frame.
 	local cameraDir = Instance.new("InputAction")
 	cameraDir.Name = "CameraDir"
 	cameraDir.Type = Enum.InputActionType.Direction3D
 	cameraDir.Parent = ctx
 
-	ctx.Parent = player -- parented to the Player, so BOTH machines can read it
+	ctx.Parent = player -- parented to the Player, so both machines can read it
 end
 
 local function spawnCubeFor(player: Player)
@@ -73,9 +73,9 @@ local function spawnCubeFor(player: Player)
 	root.Color = Color3.fromRGB(220, 150, 60)
 	root.Position = spawnAt
 
-	-- UNANCHORED, and this is load-bearing. An ANCHORED part is excluded from client
+	-- Unanchored, and this is load-bearing. An anchored part is excluded from client
 	-- prediction entirely: the owning client reports itself Authoritative for its own
-	-- server-owned character, and nothing is ever rolled back. See samples/repro.
+	-- server-owned character, and nothing is ever rolled back.
 	root.Anchored = false
 
 	-- A bit slippery, so the servo is fighting the floor rather than the other way round.
@@ -83,9 +83,9 @@ local function spawnCubeFor(player: Player)
 	root.Parent = model
 	model.PrimaryPart = root
 
-	-- ACTUATORS ARE PRE-WIRED HERE, NOT IN THE SIM. The sim may not create instances (it
-	-- re-runs on every replayed step), so everything it could ever need exists up front
-	-- and the sim only writes TARGETS onto it.
+	-- Actuators are pre-wired here rather than in the sim. The sim may not create instances,
+	-- because it re-runs on every replayed step, so everything it could need exists up front
+	-- and the sim only writes targets onto it.
 	local att = Instance.new("Attachment")
 	att.Name = "DriveAtt"
 	att.Parent = root
@@ -118,8 +118,8 @@ local function spawnCubeFor(player: Player)
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	model.Parent = cubes
 
-	-- THE TWO LINES EVERYONE FORGETS. Neither is discoverable.
-	player.ReplicationFocus = root -- what replication and PREDICTION centre on
+	-- Both of these are easy to miss and neither is discoverable.
+	player.ReplicationFocus = root -- what replication and prediction centre on
 	player.Character = model -- what the camera knows not to push through
 
 	print("[CubeServer] spawned", name)

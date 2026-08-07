@@ -1,5 +1,5 @@
 --!strict
--- CakeClient — prediction bootstrap, camera, and the CameraDir feed.
+-- CakeClient -- prediction bootstrap, camera, and the CameraDir feed.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
@@ -11,52 +11,34 @@ end
 local localPlayer = Players.LocalPlayer
 local smoothDamp = require(ReplicatedFirst:WaitForChild("Smoothing")).damp
 
--- Run the SAME sim locally: this is client-side prediction.
+-- Run the same sim locally: this is client-side prediction.
 require(ReplicatedFirst:WaitForChild("CakeSim")).Initialize()
 
--- Hide the raw physics and show the player a smoothed copy of it instead. Everything
--- you actually SEE from here on is the presentation layer; the physics is just truth.
+-- Hide the raw physics and show a smoothed copy of it instead. Everything visible from
+-- here on is the presentation layer; the physics is the truth behind it.
 local Presentation = require(ReplicatedFirst:WaitForChild("Presentation"))
 Presentation.Initialize()
 
--- ---------------------------------------------------------------------------
--- PREDICTION: WE DON'T MANAGE IT. THE ENGINE DOES.
+-- Prediction is the engine's job, not ours. It predicts instances with simulation access
+-- near the local character and maintains that bubble itself -- measured here at roughly
+-- 10-20 studs, adaptive.
 --
--- The engine predicts instances with simulation access NEAR THE LOCAL CHARACTER, and
--- it maintains that bubble itself -- measured here at roughly 10-20 studs, adaptive.
---
--- IT ONLY WORKS IF THE ENGINE KNOWS WHERE YOU ARE. Two things must be set, and both
--- are done server-side in CakeServer at spawn:
+-- It only works if the engine knows where you are, which takes two properties, both set
+-- server-side in CakeServer at spawn:
 --
 --   player.ReplicationFocus = <root part>   -- what to replicate around
---   player.Character        = <the model>   -- what to PREDICT around
+--   player.Character        = <the model>   -- what to predict around
 --
--- Miss those and the engine has no centre to work from: nothing gets predicted and your
--- own input feels like full round-trip latency. That is the actual fix, and it's two
--- lines.
---
--- We DID build a hand-rolled bubble here (SetPredictionMode On/Off by distance, with
--- hysteresis) and it was a mistake worth recording: it fought the engine's own bubble,
--- flipping modes underneath it. If you find yourself micromanaging prediction, check
--- ReplicationFocus and Character first -- you are probably solving a problem you created
--- by not setting them. A rival close enough to punch is inside your bubble by
--- definition, so there is nothing here to force.
--- ---------------------------------------------------------------------------
+-- Without them the engine has no centre to work from, nothing gets predicted, and your own
+-- input feels like full round-trip latency. Don't hand-roll a bubble of your own on top
+-- (SetPredictionMode by distance, with hysteresis): it fights the engine's and flips modes
+-- underneath it. A rival close enough to punch is inside the bubble already.
 
--- ---------------------------------------------------------------------------
--- THE CAMERA IS YOURS NOW.
---
--- In a Server Authority place with no Humanoid, Roblox does not give you the stock
--- PlayerModule -- check PlayerScripts and you'll find it simply isn't there. So
--- `CameraType = Custom` gets you nothing: no controller ever runs, the camera sits
--- wherever it was born, and you spend twenty minutes convinced your character failed
--- to spawn while you stare at an empty baseplate. The character was fine. Nobody was
--- driving the camera.
---
--- So we drive it. Orbit on right-drag, zoom on the wheel, and follow a SMOOTHED
--- position rather than the character itself -- a wobbling cake is nauseating to
--- track directly, and the smoothing is also what will hide correction pops later.
--- ---------------------------------------------------------------------------
+-- In a Server Authority place with no Humanoid, the stock PlayerModule is not present in
+-- PlayerScripts, so `CameraType = Custom` gets you nothing -- no controller runs and the
+-- camera stays where it was born. Drive it yourself: orbit on right-drag, zoom on the
+-- wheel, and follow a smoothed position rather than the character itself, since a wobbling
+-- cake is hard to track directly and the smoothing also hides correction pops.
 local camera = workspace.CurrentCamera
 camera.CameraType = Enum.CameraType.Scriptable
 
@@ -109,9 +91,9 @@ RunService:BindToRenderStep("CakeCamera", Enum.RenderPriority.Camera.Value, func
 	if not base then
 		return
 	end
-	-- Follow the SMOOTHED copy, not the truth. The truth is the thing that snaps when a
-	-- misprediction lands -- point a camera at it and every correction becomes a flick of
-	-- the whole screen, which is far more sickening than a character twitching.
+	-- Follow the smoothed copy, not the truth. The truth is what snaps when a misprediction
+	-- lands, and a camera pointed at it turns every correction into a flick of the whole
+	-- screen, which is far worse to look at than a character twitching.
 	local follow = Presentation.GetSmoothed(base) or base
 	local target = follow.Position + Vector3.new(0, CAM_HEIGHT, 0)
 	if not focus then
@@ -124,10 +106,10 @@ RunService:BindToRenderStep("CakeCamera", Enum.RenderPriority.Camera.Value, func
 	camera.CFrame = CFrame.lookAt(eye, focus :: Vector3)
 end)
 
--- Feed camera-forward into the CameraDir action: fire on CHANGE plus a slow
--- keep-alive (a still camera doesn't need re-sending every frame). This is what
--- makes steering camera-relative on BOTH sides -- the sim must never read the
--- camera directly, or the server and rollback will disagree with you.
+-- Feed camera-forward into the CameraDir action: fire on change, plus a slow keep-alive,
+-- since a still camera doesn't need re-sending every frame. This is what makes steering
+-- camera-relative on both sides. The sim must never read the camera directly, or the server
+-- and the rollback will disagree with you.
 local playContext = localPlayer:WaitForChild("PlayContext")
 local cameraDir = playContext:WaitForChild("CameraDir")
 local lastFired = Vector3.zero

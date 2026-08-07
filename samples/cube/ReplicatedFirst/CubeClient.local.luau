@@ -13,12 +13,12 @@ local player = Players.LocalPlayer
 local CubePresent = require(ReplicatedFirst:WaitForChild("CubePresent"))
 CubePresent.Initialize()
 
--- Run the SAME sim locally. This is client-side prediction.
+-- Run the same sim locally. This is client-side prediction.
 require(ReplicatedFirst:WaitForChild("CubeSim")).Initialize()
 
--- THE CAMERA IS YOURS NOW. Server Authority gives you no PlayerModule in a
--- characterless place, so CameraType = Custom gets you nothing: no controller ever
--- runs and the camera sits wherever it was born.
+-- The camera is yours to drive here. In a characterless Server Authority place there is no
+-- PlayerModule, so CameraType = Custom gets you nothing: no controller runs and the camera
+-- sits wherever it was born.
 local camera = workspace.CurrentCamera
 camera.CameraType = Enum.CameraType.Scriptable -- without this, your CFrame is overwritten
 
@@ -72,8 +72,8 @@ RunService:BindToRenderStep("CubeCamera", Enum.RenderPriority.Camera.Value, func
 		return
 	end
 
-	-- Follow the SMOOTHED copy. The truth is the thing that snaps on a correction, and a
-	-- camera pointed at it turns every correction into a flick of the whole screen.
+	-- Follow the smoothed copy. The truth is what snaps on a correction, and a camera pointed
+	-- at it turns every correction into a flick of the whole screen.
 	local follow = CubePresent.GetSmoothed(root) or root
 	local target = follow.Position + Vector3.new(0, CAM_HEIGHT, 0)
 	if not focus then
@@ -86,7 +86,7 @@ RunService:BindToRenderStep("CubeCamera", Enum.RenderPriority.Camera.Value, func
 	camera.CFrame = CFrame.lookAt(eye, focus :: Vector3)
 end)
 
--- FEED THE CAMERA DIRECTION IN AS AN INPUT. Fire on change, plus a slow keep-alive.
+-- Feed the camera direction in as an input. Fire on change, plus a slow keep-alive.
 local playContext = player:WaitForChild("PlayContext")
 local cameraDir = playContext:WaitForChild("CameraDir")
 local lastFired = Vector3.zero

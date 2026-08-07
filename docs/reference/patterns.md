@@ -56,13 +56,13 @@ function Simulation.Initialize()
 			local root = resolveRoot(player)
 			if not root then continue end
 
-			-- OWNER ONLY: live input -> intent attributes.
+			-- Owner only: live input -> intent attributes.
 			-- The server owns every character; a client owns only its own.
 			if isServer or player == localPlayer then
 				readInput(root, player)
 			end
 
-			-- EVERY PEER: drive actuators from those attributes, identically.
+			-- Every peer: drive actuators from those attributes, identically.
 			drive(root, dt)
 		end
 	end, Enum.StepFrequency.Hz60)
@@ -284,7 +284,7 @@ conjured.
 Anchor the servo between two attachments and turn the reaction on:
 
 ```lua
--- BEFORE: a fist hauled to a world point, by nothing, for free
+-- BEFORE: a fist hauled to a world point, with nothing reacting against it
 reach.Mode = Enum.PositionAlignmentMode.OneAttachment
 reach.Attachment0 = fistAttachment
 reach.MaxForce = 26000
@@ -295,14 +295,14 @@ reach.Mode = Enum.PositionAlignmentMode.TwoAttachment
 reach.Attachment0 = fistAttachment     -- the end that gets moved
 reach.Attachment1 = shoulderStance     -- an attachment ON the body: it eats the recoil
 reach.ReactionForceEnabled = true
-reach.MaxForce = 4000                  -- 6x less, and it arrives FASTER
+reach.MaxForce = 4000                  -- 6x less, and it arrives faster
 ```
 
 Three things fall out, and the second is the reason to do it even if physical honesty is not
 the goal:
 
 1. Throwing your hands out rocks you backwards. Holding a heavy guard costs you posture.
-2. **The target rides the body's own frame for free.** `Attachment1` lives on the torso, so it
+2. **The target rides the body's own frame.** `Attachment1` lives on the torso, so it
    leans, lags and wobbles with the body — the shoulders stay square to the hands by
    construction. The simulation stops recomputing a world position every step, which removes
    an entire class of bug where the pose and the body disagree.

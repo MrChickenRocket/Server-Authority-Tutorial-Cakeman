@@ -1,7 +1,7 @@
 --!strict
 -- CubePresent -- the visual layer.
 --
--- Copy A: the authoritative part. Replicated, simulated, and locally INVISIBLE.
+-- Copy A: the authoritative part. Replicated, simulated, and locally invisible.
 -- Copy B: a client-only, anchored clone. A picture. Never simulated; we set its CFrame.
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
@@ -53,14 +53,13 @@ local function adopt(truth: BasePart)
 
 	local copy = truth:Clone()
 
-	-- A VISUAL COPY IS STILL A PART, AND A CLONE INHERITS EVERYTHING.
-	--
-	-- Left alone it will collide, answer raycasts, fire Touched, take part in fluid
-	-- forces, occlude audio, and carry every tag and attribute the original had. All of
-	-- that is invisible to you and visible to your game. Neutralise the lot.
+	-- A visual copy is still a part, and a clone inherits everything. Left alone it will
+	-- collide, answer raycasts, fire Touched, take part in fluid forces, occlude audio, and
+	-- carry every tag and attribute the original had -- all of it invisible to you and
+	-- visible to your game. Neutralise the lot.
 	--
 	-- The tags matter most: the copy would arrive already tagged "Presented", we would
-	-- present IT, that copy would arrive tagged too, and the layer eats itself.
+	-- present it, that copy would arrive tagged too, and the layer would feed on itself.
 	for _, tag in CollectionService:GetTags(copy) do
 		CollectionService:RemoveTag(copy, tag)
 	end
@@ -70,7 +69,7 @@ local function adopt(truth: BasePart)
 
 	copy.Anchored = true
 	copy.CanCollide = false
-	copy.CanQuery = false -- raycasts. See the note below -- this one is the expensive miss.
+	copy.CanQuery = false -- raycasts. The costliest one to miss: see the note above.
 	copy.CanTouch = false
 	copy.AudioCanCollide = false
 	copy.EnableFluidForces = false
@@ -79,7 +78,7 @@ local function adopt(truth: BasePart)
 	copy.Name = truth.Name .. "_Visual"
 	copy.Parent = visualsFolder()
 
-	-- Hide the truth, on THIS CLIENT ONLY. LocalTransparencyModifier is client-side: the
+	-- Hide the truth, on this client only. LocalTransparencyModifier is client-side: the
 	-- server's copy is untouched and nobody else's view changes.
 	truth.LocalTransparencyModifier = 1
 
@@ -104,8 +103,8 @@ local function abandon(truth: BasePart)
 end
 
 function CubePresent.Initialize()
-	-- The entire subscription. One tag in, visual copies out. This file knows nothing
-	-- about cubes; it knows about a tag.
+	-- The entire subscription. One tag in, visual copies out. This file is driven by the tag
+	-- alone and knows nothing about cubes.
 	local function consider(inst: Instance)
 		if inst:IsA("BasePart") then
 			adopt(inst :: BasePart)
@@ -132,11 +131,9 @@ function CubePresent.Initialize()
 				continue
 			end
 
-			-- Aim at where the truth is GOING, not where it is, or smoothing leaves every
-			-- moving object trailing behind itself on a rubber band.
-			--
-			-- The cube is moved by the physics solver, so it just tells us how fast it is
-			-- going. Nothing to reconstruct.
+			-- Aim at where the truth is going, not where it is, or smoothing leaves every
+			-- moving object trailing behind itself. The cube is moved by the physics solver,
+			-- so it tells us how fast it is going and there is nothing to reconstruct.
 			local target = truth.Position + truth.AssemblyLinearVelocity * LEAD
 
 			if (target - f.pos).Magnitude > SNAP_DIST then
@@ -150,8 +147,8 @@ function CubePresent.Initialize()
 	end)
 end
 
--- The camera should follow the SMOOTHED copy. Tracking the truth means tracking a thing
--- that snaps.
+-- The camera should follow the smoothed copy. Tracking the truth means tracking a thing that
+-- snaps on every correction.
 function CubePresent.GetSmoothed(truth: BasePart): BasePart?
 	local f = follows[truth]
 	return f and f.copy or nil

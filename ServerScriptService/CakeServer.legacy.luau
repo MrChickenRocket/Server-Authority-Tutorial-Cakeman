@@ -1,37 +1,24 @@
 --!strict
--- CakeServer — spawns one authoritative CakeMan per player under Server Authority.
+-- CakeServer -- spawns one authoritative CakeMan per player under Server Authority.
 --
--- IT DOES NOT BUILD THE CHARACTER. It clones him.
---
--- The rig is a real Model that lives in ServerStorage.CakeManRig, in the place file --
--- joints, actuators, attachments and all. You can open it in the explorer and look at it.
--- The code that produced it is ServerStorage.GenerateRig, which is DISABLED: it's the
--- recipe, not the runtime.
---
--- This is a deliberate reversal of how the project started. Everything used to be built
--- from scratch at boot, which is elegant and completely opaque -- you cannot inspect a
--- character that doesn't exist until the server runs, you cannot see a joint's cone in a
--- gizmo, and you cannot hand the thing to an artist. Now the artefact is in the place and
--- the recipe is in a disabled script, and you get both.
+-- It clones the character rather than building it. The rig is a real Model living in
+-- ServerStorage.CakeManRig in the place file, joints and actuators and attachments and all,
+-- so you can open it in the explorer, inspect it, and tune it there. The rig is the
+-- authoritative copy of every mass, cone angle and joint friction in the character.
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
 local RunService = game:GetService("RunService")
 
-Players.CharacterAutoLoads = false -- no Humanoids; CakeMan IS the character
+Players.CharacterAutoLoads = false -- no Humanoids; CakeMan is the character
 
 local rigTemplate = ServerStorage:WaitForChild("CakeManRig") :: Model
 
--- CHECK THE RIG BEFORE YOU TRUST IT.
---
--- Now that the character is an artefact in the place rather than something this script
--- builds, it can be WRONG in ways code never could: someone deletes an attachment in the
--- explorer, an edit doesn't get saved, a constraint loses a reference. And a constraint
--- with a nil Attachment does not error -- it simply applies no force, forever, in
--- silence. This project has lost hours to that exact failure three separate times.
---
--- So: state the contract, check it at spawn, and be loud. It costs one comparison per
--- player and turns "he feels sluggish" into "Thrust.Attachment0 is nil".
+-- Check the rig before trusting it. Because the character is an artefact in the place
+-- rather than something this script builds, it can be wrong in ways code cannot: a deleted
+-- attachment, an unsaved edit, a constraint that lost its reference. A constraint with a nil
+-- Attachment does not error -- it applies no force, silently, forever. One comparison per
+-- player turns "he feels sluggish" into "Thrust.Attachment0 is nil".
 local function checkRig(man: Model)
 	local base = man:FindFirstChild("Layer1") :: BasePart?
 	local thrust = base and base:FindFirstChild("Thrust") :: VectorForce?
@@ -43,12 +30,12 @@ local function checkRig(man: Model)
 	end
 	if thrust.Attachment0 == nil then
 		warn(
-			"[CakeServer] Thrust has NO Attachment0 -- it will apply zero force, forever. "
-				.. "Re-run ServerStorage.GenerateRig and SAVE THE PLACE."
+			"[CakeServer] Thrust has no Attachment0 -- it will apply zero force, forever. "
+				.. "Fix it on ServerStorage.CakeManRig and save the place."
 		)
 	end
 	if heading.Attachment0 == nil then
-		warn("[CakeServer] Heading has NO Attachment0 -- nothing is holding him upright")
+		warn("[CakeServer] Heading has no Attachment0 -- nothing is holding him upright")
 	end
 end
 
@@ -76,8 +63,8 @@ local function buildInputContext(player: Player)
 	pad.KeyCode = Enum.KeyCode.Thumbstick1
 	pad.Parent = steer
 
-	-- The camera direction rides in as an INPUT ACTION the client fires -- so the
-	-- server and rollback both see the same camera-relative intent.
+	-- The camera direction rides in as an input action the client fires, so the server and
+	-- the rollback both see the same camera-relative intent.
 	local cameraDir = Instance.new("InputAction")
 	cameraDir.Name = "CameraDir"
 	cameraDir.Type = Enum.InputActionType.Direction3D
@@ -91,10 +78,10 @@ local menFolder = Instance.new("Folder")
 menFolder.Name = "CakeMen"
 menFolder.Parent = workspace
 
--- One home base each, on the compass points. (Everything between the bases is a bridge
--- over a pit, which is where the game actually happens.) Must be declared BEFORE the
--- spawn function that reads it, or Luau captures it as a nil global instead of an
--- upvalue and you get a very confusing "attempt to index nil" at spawn time.
+-- One home base each, on the compass points. Everything between the bases is a bridge over
+-- a pit, which is where the game happens. Declared before the spawn function that reads it:
+-- a local defined later resolves inside the function as a global instead, so you get a nil
+-- index at spawn time.
 local SPAWN_POINTS = {
 	Vector3.new(0, 6, -54), -- North base
 	Vector3.new(54, 6, 0), -- East base
@@ -112,31 +99,26 @@ local function spawnCakeManFor(player: Player)
 	end
 	spawnIndex += 1
 
-	-- CLONE THE RIG. Joints, actuators, attachments, tags, streaming mode -- all of it
-	-- already exists in the template, so there is nothing to assemble here. Note that a
-	-- clone remaps its own internal references: every constraint in the copy points at
-	-- the copy's attachments, not the template's. That's what makes this work at all, and
-	-- it's why the rig has to be built as ONE model rather than wired up after parenting.
+	-- Joints, actuators, attachments, tags and streaming mode all exist in the template, so
+	-- there is nothing to assemble here. A clone remaps its own internal references -- every
+	-- constraint in the copy points at the copy's attachments -- which is why the rig has to
+	-- be built as one model rather than wired up after parenting.
 	local man = rigTemplate:Clone()
 	man.Name = name
 	checkRig(man)
 
-	-- One home base each. (Everything between the bases is a bridge over a pit, which is
-	-- where the game actually happens.)
 	man:PivotTo(CFrame.new(SPAWN_POINTS[((spawnIndex - 1) % #SPAWN_POINTS) + 1]))
 
 	man.Parent = menFolder
-	-- THE line everyone forgets. With no Humanoid character, prediction has no
-	-- centre without this -- your own CakeMan won't be predicted and every input
-	-- feels like full round-trip latency.
+	-- With no Humanoid character, prediction has no centre without this: your own CakeMan
+	-- won't be predicted and every input feels like full round-trip latency.
 	player.ReplicationFocus = man.PrimaryPart
 
-	-- And THE line everyone forgets second. The stock camera pushes itself in
-	-- whenever something blocks its view of the subject -- and the only thing it
-	-- knows not to shove past is `Player.Character`. We never set that (we have no
-	-- Humanoid, so nothing set it for us), so the camera treated CakeMan as scenery
-	-- and rammed itself through his own cake. Setting it costs nothing and doesn't
-	-- summon a Humanoid: it just tells the camera "this pile of parts is HIM".
+	-- And the camera needs this one. The stock camera pushes itself in whenever something
+	-- blocks its view of the subject, and the only thing it knows not to shove past is
+	-- Player.Character. Nothing sets it for us here, since we have no Humanoid, so without
+	-- this the camera treats CakeMan as scenery and rams through his own cake. Setting it
+	-- does not summon a Humanoid; it just identifies the model as the player.
 	player.Character = man
 	print("[CakeServer] spawned", name)
 end
@@ -148,18 +130,14 @@ local function despawnCakeManFor(player: Player)
 	end
 end
 
--- Fall in a pit and you come back. We TELEPORT the existing cake rather than destroying
--- and rebuilding it: a respawn that swaps the model out invalidates every reference the
--- client is holding (its presentation copies, its prediction, its camera subject), and
--- you get a visible hitch for no reason. Move him instead, and zero his velocity so he
--- doesn't arrive still falling.
+-- Fall in a pit and you come back. Teleport the existing cake rather than destroying and
+-- rebuilding it: swapping the model out invalidates every reference the client holds (its
+-- presentation copies, its prediction, its camera subject) and costs a visible hitch.
 --
--- ANYTHING A RESPAWN DOESN'T EXPLICITLY CLEAR, IT SILENTLY KEEPS.
---
--- Right now the only state a CakeMan carries is his physics, so zeroing every velocity is
--- the whole job -- otherwise he arrives at his base still falling at terminal velocity and
--- immediately punches straight back through the floor. Add any state to the character
--- later (health, a stun, whatever) and it has to be reset here too.
+-- Anything a respawn doesn't explicitly clear, it keeps. The only state a CakeMan carries
+-- right now is his physics, so zeroing every velocity is the whole job -- otherwise he
+-- arrives at his base still falling at terminal velocity and goes straight back through the
+-- floor. Add state to the character later (health, a stun) and it has to be reset here too.
 local function respawn(man: Model, index: number)
 	local point = SPAWN_POINTS[(index % #SPAWN_POINTS) + 1]
 	man:PivotTo(CFrame.new(point))
