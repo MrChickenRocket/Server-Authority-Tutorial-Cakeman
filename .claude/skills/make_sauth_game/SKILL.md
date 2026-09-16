@@ -1,6 +1,6 @@
 ---
 name: make_sauth_game
-description: Scaffold a new server-authoritative (SA) custom physics character game for Roblox from an empty baseplate — place settings, the four-file spawn/input/sim/client architecture, and playtest checkpoints. Use when the user wants to start a new SA physics game or invokes /make_sauth_game.
+description: Scaffold a new server-authoritative (SA) custom character game for Roblox from an empty baseplate — physics (forces on an unanchored rig) or kinematic (anchored, CFrame-written) — place settings, the four-file spawn/input/sim/client architecture, and playtest checkpoints. Use when the user wants to start a new SA character game or invokes /make_sauth_game.
 ---
 
 # Make a server-authoritative physics game
@@ -28,6 +28,10 @@ Keep [`patterns.md`](../../../docs/reference/patterns.md) open for the code shap
 ## 1. Gather the concept (ask once, briefly)
 
 - Character name and rough body plan (root part + what hangs off it).
+- Physics or kinematic. Physics (the default, and what the cube set is): forces move an
+  unanchored rig. Kinematic: the sim writes `CFrame` to an anchored part from its own
+  `Pos`/`Vel` attributes. The choice changes the spawn, the drive step and one client call,
+  nothing else.
 - Where the synced script folder lives (ScriptSync root).
 
 Default to a two-part rig — one dense root part plus one light part on a loose ball socket —
@@ -63,6 +67,15 @@ line-for-line against Chapter 1 of the tutorial:
 Rename `Cube*` to the user's character. Keep the file-class suffixes: `.luau` ModuleScript,
 `.local.luau` LocalScript, `.legacy.luau` Script.
 
+**Kinematic variant.** Start from the same cube set, then: `root.Anchored = true`; drop
+`DriveAtt`, `Thrust` and `Heading`; seed `Pos` and `Vel` attributes at spawn; replace
+`drive()` with the integrator in
+[patterns.md §17](../../../docs/reference/patterns.md#17-kinematic-anchored-characters); and
+in the client LocalScript call `RunService:SetPredictionMode(root, Enum.PredictionMode.On)`
+once the model exists. Without that call the part reads `None` and every input plays twice.
+`CubePresent` still works, but its velocity lead reads `AssemblyLinearVelocity`, which is
+zero on an anchored part — feed it the `Vel` attribute or drop the lead.
+
 The CakeMan set at the repo root (`ReplicatedFirst/CakeSim.luau`,
 `ReplicatedFirst/Presentation.luau`, `ReplicatedFirst/Smoothing.luau`,
 `ServerScriptService/CakeServer.legacy.luau`, `ServerScriptService/CakePunch.legacy.luau`,
@@ -87,6 +100,9 @@ can silently get wrong. Each links to the reasoning.
 - **Tunables at the top of the sim file, in acceleration units**, each with a comment saying
   what it *feels* like. Knobs then keep their meaning when the rig's mass changes.
   → [physics-characters.md §2](../../../docs/reference/physics-characters.md#2-the-body-is-gameplay-mass-joints-assemblies)
+- **Prediction mode for anchored parts** — `Automatic` skips them silently. A kinematic
+  character needs `SetPredictionMode(root, On)` on the client; a physics character does not.
+  → [patterns.md §17](../../../docs/reference/patterns.md#17-kinematic-anchored-characters)
 
 ## 5. Verify — checkpoint before features
 
@@ -96,7 +112,8 @@ when you specifically want behavior under real latency.
 
 1. Character spawns, console clean.
 2. `RunService:GetPredictionStatus(root)` returns `Enum.PredictionStatus.Predicted`. If it
-   says `Authoritative`, a character part is anchored.
+   says `None` (`Authoritative` on July 2026 builds), a character part is anchored and its
+   prediction mode is `Automatic`: unanchor it, or `SetPredictionMode(root, On)` on the client.
 3. WASD drives it camera-relative; holding W while swinging the camera carves a curve.
 4. Speed rises to ~`TARGET_SPEED` and holds. Trace it — numbers, not vibes:
 
@@ -119,7 +136,8 @@ Scaffold-stage symptoms. The full 19-row table is
 |---|---|
 | Nothing moves | Sim module not initialized on both sides |
 | Input feels like full round-trip lag | `player.Character` not set — that is what pulls parts into the prediction loop |
-| Character never rolls back, status `Authoritative` | A character part is `Anchored` |
+| Character never rolls back, status `None` (`Authoritative` on July 2026 builds); inputs play twice | A character part is `Anchored` under `Automatic` prediction — unanchor it, or `SetPredictionMode(root, On)` on the client |
+| The server never sees an input; its intent attributes stay at their spawn values | `AuthorityMode` is not `Server`. Tooling cannot read it; an unanchored part under the character reads `Authoritative` on the owning client instead of `Predicted` |
 | Stock camera pushes through the character | `player.Character` not set |
 | Camera sits near the world origin | No `PlayerModule` in a characterless place — build it, and set `CameraType = Scriptable` |
 | Steering ignores the camera | CameraDir action not firing, or the sim reads the camera directly |

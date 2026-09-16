@@ -119,7 +119,7 @@ from. Non-exhaustive; treat it as a known-good floor, not the boundary:
 | `AlignOrientation.CFrame` | Facing target. |
 | `AlignPosition.Position` | Position target. |
 | `Constraint.Enabled` | On `AlignPosition` / `AlignOrientation`. |
-| `BasePart.CFrame` | Roblox's cited example. Prefer forces over writing transforms directly. |
+| `BasePart.CFrame` | Roblox's cited example. Physics characters prefer forces; a kinematic character writes it every step ([patterns.md §17](patterns.md#17-kinematic-anchored-characters)). |
 
 Explicitly **not** simulation access — from the techniques page: `Name`, `Size`, `Parent`.
 These can be set freely on an instance before it is parented into the DataModel.
@@ -164,11 +164,15 @@ RunService:GetPredictionStatus(instance)
 `GetPredictionStatus` is the tool for answering "why does this feel laggy" — it tells you
 what is *actually* being predicted rather than what you intended.
 
-**An anchored part is excluded from client prediction entirely.** The owning client reports
-itself `Authoritative` for its own server-owned character and nothing is ever rolled back.
-There is no error and no warning. Never anchor a character part; hand the solver a force and
-let it move things. Verify with `GetPredictionStatus(root)`, which should return
-`Enum.PredictionStatus.Predicted`.
+**An anchored part is left out of prediction under `Automatic`.** The owning client reports
+`None` for it (Studio 0.738; July 2026 builds reported `Authoritative`), nothing is ever
+rolled back, and the server's replicated snapshots are applied straight over whatever the
+client's sim wrote. There is no error and no warning. `SetPredictionMode(part, On)` from the
+client pulls it in: the status flips to `Predicted` on the same frame and the snapshots stop
+landing. `On → Automatic` leaves it `Predicted`; `Off → Automatic` returns it to `None`.
+Verify with `GetPredictionStatus(root)`, which should return
+`Enum.PredictionStatus.Predicted` for every character part. The kinematic-character pattern
+and its measurements are in [patterns.md §17](patterns.md#17-kinematic-anchored-characters).
 
 ## What mispredictions cost
 

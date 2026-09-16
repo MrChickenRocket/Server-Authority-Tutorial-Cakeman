@@ -61,9 +61,10 @@ end
 -- does the moving; we only ever hand it a target.
 --
 -- We never write CFrame and we never write velocity. Setting a velocity every step would mean
--- the character is not really being simulated, and an anchored part -- the other way to take
--- the transform into your own hands -- is excluded from client prediction altogether. Let the
--- solver move it and Server Authority can see it.
+-- the character is not really being simulated. Writing CFrame to an anchored part is a
+-- legitimate design of its own -- a kinematic character -- but it needs
+-- SetPredictionMode(part, On) on the client or it is left out of prediction; see patterns.md
+-- section 17. This cube lets the solver move it, and Server Authority predicts it as-is.
 local function drive(root: BasePart, dt: number)
 	local thrust = root:FindFirstChild("Thrust") :: VectorForce?
 	local heading = root:FindFirstChild("Heading") :: AlignOrientation?

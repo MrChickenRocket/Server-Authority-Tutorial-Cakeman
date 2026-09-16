@@ -73,9 +73,10 @@ local function spawnCubeFor(player: Player)
 	root.Color = Color3.fromRGB(220, 150, 60)
 	root.Position = spawnAt
 
-	-- Unanchored, and this is load-bearing. An anchored part is excluded from client
-	-- prediction entirely: the owning client reports itself Authoritative for its own
-	-- server-owned character, and nothing is ever rolled back.
+	-- Unanchored: the solver moves it, and an unanchored part under player.Character is
+	-- predicted by default. An anchored one is not -- it reads None from GetPredictionStatus
+	-- and the server's updates land over the client's own writes -- unless the client calls
+	-- RunService:SetPredictionMode(root, Enum.PredictionMode.On). See patterns.md section 17.
 	root.Anchored = false
 
 	-- A bit slippery, so the servo is fighting the floor rather than the other way round.

@@ -421,6 +421,10 @@ print(RunService:GetPredictionStatus(somePart)) -- verify what is ACTUALLY predi
 
 `On` grows the resimulation set. Profile before applying it broadly.
 
+`On` is also the only way an **anchored** part is predicted. Under `Automatic` an anchored
+character part reads `None` and is skipped, silently (§17). Switching `On → Automatic`
+leaves the part `Predicted`; go through `Off` to drop it back out.
+
 ## 11. Predicting other players
 
 By default other players' objects are extrapolated from replicated state. For
@@ -536,3 +540,94 @@ is a remote character that pops in and cannot be predicted.
    `require`**, so module-level state is not reachable from outside.
 7. **Check for a human at the wheel** before debugging ghost motion in a shared Studio
    session.
+8. **Confirm `AuthorityMode` is actually `Server`** from inside a play session, since tooling
+   cannot read it: an unanchored part under the character reads `Predicted` on the owning
+   client under Server Authority and `Authoritative` under legacy client ownership. Without
+   it the scripts still run, but `InputAction` state never reaches the server.
+
+## 17. Kinematic (anchored) characters
+
+A character the solver never moves: one anchored part, and the sim writes its `CFrame` every
+step from its own state. No forces, no constraints, no Humanoid. The four-file shape of §1
+is unchanged; only the spawn and the drive step differ from the physics character.
+
+Measured on Studio 0.738 in single-process Play, 2026-09-16, with a one-part character on a
+baseplate, `Hz60`, no presentation layer.
+
+**The catch: an anchored part is not predicted under `PredictionMode.Automatic`.** The
+owning client reads `None` for it (`Authoritative` on July 2026 builds), `IsResimulating()`
+never fires for it, and every replicated snapshot from the server is applied straight over
+the client's local `CFrame` and attributes. Nothing rolls back, so nothing replays the
+still-unconfirmed input either. With whole-stud steps per key press this renders as
+N → N+1 → N → N+1 on every press. With continuous motion it is a hitch at every input
+change: 42 overwrites totalling 7.0 studs over a 13 s drive, clustered where the input
+changed (10 in the second with quick reversals, 0 during a steady 1.5 s hold), each dragging
+the client onto the server's trajectory. Play cannot show it and the console says nothing.
+
+**The fix is one call on the client**, once the part exists:
+
+```lua
+RunService:SetPredictionMode(part, Enum.PredictionMode.On)
+```
+
+The status flips to `Predicted` on the same frame. The same 13 s drive then measured 0
+overwrites, 0 stall frames and 0 pops, and the client and server agreed to the last float at
+the end. `On → Automatic` leaves the part `Predicted`; only `Off` drops it out again. The
+client alone was enough here; whether the server benefits from the same call is untested.
+
+### The drive step
+
+State is attributes on the part, so on a predicted part it rolls back with the part. `dt`
+comes from the callback; nothing else is a clock.
+
+```lua
+local ACCEL = 120 -- studs/s^2 while a key is held
+local MAX_SPEED = 24 -- studs/s
+local FRICTION = 4 -- 1/s exponential decay, always on
+
+-- Owner only: the server for every part, a client for its own. `dir` is the summed
+-- InputAction state, read as in §2.
+local function drive(part: BasePart, dir: Vector3, dt: number)
+	local pos = (part:GetAttribute("Pos") :: Vector3?) or part.Position
+	local vel = (part:GetAttribute("Vel") :: Vector3?) or Vector3.zero
+
+	if dir.Magnitude > 1e-3 then
+		vel += dir.Unit * (ACCEL * dt)
+	end
+	vel *= math.exp(-FRICTION * dt)
+	if vel.Magnitude > MAX_SPEED then
+		vel = vel.Unit * MAX_SPEED
+	elseif vel.Magnitude < 1e-3 then
+		vel = Vector3.zero -- exponential decay never reaches zero on its own
+	end
+	pos += vel * dt
+
+	part:SetAttribute("Pos", pos)
+	part:SetAttribute("Vel", vel)
+	part.CFrame = CFrame.new(pos) -- every step, not only on change
+end
+```
+
+Keep `Pos` as the sim's position rather than integrating from `part.Position`: `CFrame`
+reads back a few 1e-5 off what was written, and integrating from the read-back accumulates
+it.
+
+### Spawn differences from the physics character
+
+- `part.Anchored = true`. No `VectorForce`, no `AlignOrientation`, no attachments.
+- `CanCollide = false`, `CanQuery = false`, `CanTouch = false` unless the character is meant
+  to be walked into. An anchored part collides as scenery and answers raycasts.
+- Seed `Pos` (the spawn position) and `Vel` (`Vector3.zero`) as attributes.
+- Everything else in the rules.md checklist stands: `player.Character`, `ReplicationFocus`,
+  `ModelStreamingMode`, `InputContext` under the `Player`, the sim initialised on both sides
+  at `Hz60`, and the `SetPredictionMode` call in the client LocalScript.
+- The §8 presentation layer works, but its velocity lead reads `AssemblyLinearVelocity`,
+  which is zero on an anchored part. Feed it the `Vel` attribute instead, or drop the lead.
+
+### Measuring it
+
+`GetPredictionStatus` once a second is the cheap check. For the overwrite count itself,
+compare `part.Position` and the `Pos` attribute at the top of each step against what the sim
+wrote on the previous step; a difference above 1e-3 means something outside the sim moved
+the part. Split the count by `IsResimulating()` to tell a rollback restore from a snapshot
+landing on an unpredicted part. On a `Predicted` part with no mismatch it stays at zero.

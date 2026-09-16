@@ -2,7 +2,9 @@
 
 Doctrine for building a character whose **authoritative ragdoll is the character** — real
 parts, real constraints, real forces. No Humanoid, no animation-driven movement, no
-kinematic controller.
+kinematic controller. (A kinematic controller — one anchored part, the sim writes its
+`CFrame` — is a legitimate Server Authority design of its own, with one extra call. See
+[patterns.md §17](patterns.md#17-kinematic-anchored-characters).)
 
 Platform mechanics are in [server-authority.md](server-authority.md); the patterns this
 builds on are in [patterns.md](patterns.md). Everything here was verified in play. Numbers

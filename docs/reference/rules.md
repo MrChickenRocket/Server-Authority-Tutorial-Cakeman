@@ -36,13 +36,20 @@ the character-specific depth.
    `.Position`, `.Enabled`). Setting a target is idempotent; creating an instance is not.
    → [physics-characters.md](physics-characters.md#actuators-are-pre-wired-the-sim-only-sets-targets)
 
-7. **Never anchor a character part**, and drive movement with forces rather than by writing
-   velocity every frame. Anchoring is a hard prohibition — it removes the part from
-   prediction. Preferring forces is a *feel* rule: ramps hide corrections, snaps expose them.
+7. **An anchored character part is not predicted under the default `Automatic` mode.** The
+   owning client reads `None` for it (`Authoritative` on July 2026 builds), nothing rolls
+   back, and the server's snapshots land straight over the client's own writes, so every
+   input plays twice. Two correct designs: leave character parts unanchored and drive them
+   with forces, or anchor them, write `CFrame` from the sim, and call
+   `RunService:SetPredictionMode(part, Enum.PredictionMode.On)` on the client. The failure
+   is the silent middle.
+   → [patterns.md §17](patterns.md#17-kinematic-anchored-characters)
 
-   Writing `AssemblyLinearVelocity` is **legal** — it is a Simulation Access property and it
-   rolls back correctly. Rotating momentum during a surface transition is a legitimate use.
-   Use it deliberately, not as the movement channel.
+   For a physics character, preferring forces over writing velocity every frame is a *feel*
+   rule: ramps hide corrections, snaps expose them. Writing `AssemblyLinearVelocity` is
+   **legal** — it is a Simulation Access property and it rolls back correctly. Rotating
+   momentum during a surface transition is a legitimate use. Use it deliberately, not as
+   the movement channel.
    → [physics-characters.md](physics-characters.md#the-velocity-servo)
 
 8. **Set `player.Character` to the model.** It is what pulls parts into the client
@@ -79,7 +86,7 @@ the character-specific depth.
 | Reading `workspace.CurrentCamera` | The server has none; a replay needs the value *as it was* | Feed it in as a `Direction3D` action ([§13](patterns.md#13-camera)) |
 | Reading or writing module-level Lua tables | They do not roll back | Attributes |
 | Branching on `IsServer()` / `IsClient()` for *simulation outcomes* | The two machines then compute different worlds | Branch only on **who owns this character** |
-| Anchoring a character part | Excludes it from prediction entirely, silently | Leave it unanchored; drive it with forces |
+| Anchoring a character part and leaving its prediction mode `Automatic` | The part is silently left out of prediction; the server's snapshots overwrite the client's writes | Unanchor it, or `SetPredictionMode(part, On)` on the client ([§17](patterns.md#17-kinematic-anchored-characters)) |
 
 ---
 
@@ -91,7 +98,7 @@ None of these produce an error or a warning. This table is the reason this docum
 |---|---|---|
 | Input feels like full round-trip lag | `player.Character` not set, so nothing is pulled into the prediction and rollback loop | Set it to the model |
 | Nothing moves at all | Sim module initialized on only one side | `require(...).Initialize()` in **both** the server Script and the client LocalScript |
-| Character never rolls back; `GetPredictionStatus` says `Authoritative` | A character part is `Anchored` | Unanchor it |
+| Character never rolls back; `GetPredictionStatus` says `None` (`Authoritative` on July 2026 builds); a kinematic character steps back or hitches on every input change | A character part is `Anchored` and its prediction mode is `Automatic` | Unanchor it, or `SetPredictionMode(part, On)` on the client ([§17](patterns.md#17-kinematic-anchored-characters)) |
 | Character is never predicted | The client was never sent the model | Set `ModelStreamingMode` (`Persistent` for characters) |
 | Camera sits near the world origin and ignores you | No `PlayerModule` in a characterless place | Build the camera; set `CameraType = Scriptable` |
 | Camera writes are silently overwritten | `CameraType` is not `Scriptable` | Set it |
@@ -124,7 +131,8 @@ RobloxScript`):
 In code, per player, on `PlayerAdded`:
 
 - [ ] Build or clone the `InputContext` and parent it to the `Player`
-- [ ] Spawn the character model, parts **unanchored**
+- [ ] Spawn the character model, parts **unanchored** — or anchored, for a kinematic
+      character, with the client-side `SetPredictionMode` call below
 - [ ] Pre-wire every actuator (`VectorForce`, `AlignOrientation`, `AlignPosition`, …)
 - [ ] Seed intent attributes on the root part
 - [ ] Set `ModelStreamingMode`
@@ -143,6 +151,8 @@ Client only:
 - [ ] Camera built and following a **smoothed proxy**
 - [ ] Camera direction fired into the `Direction3D` action on change, with a keep-alive
 - [ ] Presentation layer, with `CanQuery = false` on every visual
+- [ ] Kinematic (anchored) character only: `RunService:SetPredictionMode(part,
+      Enum.PredictionMode.On)` once the part exists
 
 ---
 
@@ -152,7 +162,9 @@ Run **Play** (single-process is accurate; it runs the real predict/resimulate lo
 in order:
 
 1. The character spawns and the console is clean.
-2. `RunService:GetPredictionStatus(root)` returns `Enum.PredictionStatus.Predicted`.
+2. `RunService:GetPredictionStatus(root)` returns `Enum.PredictionStatus.Predicted`. `None`
+   means the part is anchored under `Automatic` prediction: unanchor it, or
+   `SetPredictionMode(root, On)` on the client.
 3. WASD drives it camera-relative; holding W while swinging the camera carves a curve.
 4. Speed rises to the target and holds — check the numbers, not the feel:
 

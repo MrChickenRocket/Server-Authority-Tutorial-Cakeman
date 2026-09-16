@@ -66,10 +66,15 @@ That round trip is input lag. Parts 2 and 3 are how it gets hidden.
    parented to the Player, so both machines can read them.
 7. Apply those inputs to the character inside `BindToSimulation`, on the server.
 
-> **Don't anchor your character and CFrame it directly.** An anchored part is excluded from
-> client prediction entirely and won't participate in the rollback. Verify that a part is
-> predicted with `RunService:GetPredictionStatus(root)`, which should return
-> `Enum.PredictionStatus.Predicted`.
+> **If you anchor your character and CFrame it directly, tell the engine to predict it.** An
+> anchored part is left out of client prediction by default: `RunService:GetPredictionStatus(root)`
+> reads `None`, it never rolls back, and the server's updates land over your own writes, so
+> every input plays twice. One call on the client fixes it:
+> `RunService:SetPredictionMode(root, Enum.PredictionMode.On)`. This chapter's cube is
+> unanchored and moved by the solver, so it is predicted as-is. Either way, verify with
+> `GetPredictionStatus(root)`, which should return `Enum.PredictionStatus.Predicted`. The
+> kinematic version is written up in
+> [the patterns reference](reference/patterns.md#17-kinematic-anchored-characters).
 
 ### Step 1 — Set the two place settings
 

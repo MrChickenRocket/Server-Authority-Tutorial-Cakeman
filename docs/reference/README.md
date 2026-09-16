@@ -12,7 +12,7 @@ are the point.
 |---|---|
 | **[rules.md](rules.md)** | Always. The invariants, the banned-inside-the-sim table, the silent-failure table, the setup checklist. Load this first. |
 | [server-authority.md](server-authority.md) | You need the platform: what the engine does, what enabling it changes, Simulation Access, prediction control, what mispredictions cost, current limitations, test modes. |
-| [patterns.md](patterns.md) | You are writing code. Project shape, the shared sim module, input, effects, clocks, constraints, presentation, prediction tuning, camera, characterless setups, debug workflow. |
+| [patterns.md](patterns.md) | You are writing code. Project shape, the shared sim module, input, effects, clocks, constraints, presentation, prediction tuning, camera, characterless setups, debug workflow, kinematic (anchored) characters. |
 | [physics-characters.md](physics-characters.md) | The character is a real ragdoll driven by forces. Rollback-safe architecture, mass and joints, locomotion, steering, omni-surface traversal, chains, feel tuning. |
 
 ## Scope
@@ -28,7 +28,10 @@ unless labelled as a setting, which is the opposite of the convention in the cha
 ## Status
 
 Current as of the **July 2026 full release**. Version-sensitive observations name the Studio
-version they were taken on.
+version they were taken on. The kinematic-character measurements in
+[patterns.md §17](patterns.md#17-kinematic-anchored-characters) were taken on Studio 0.738,
+September 2026, which also reports an unpredicted part's status as `None` where July builds
+said `Authoritative`.
 
 One thing is flagged in place rather than resolved: the exact rejection behavior for a
 non-simulation-access write inside `BindToSimulation` has not been measured. See
